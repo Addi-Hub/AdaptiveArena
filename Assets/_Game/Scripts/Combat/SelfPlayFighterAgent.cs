@@ -10,6 +10,9 @@ public sealed class SelfPlayFighterAgent : Agent
     private const int ObservationSize = 25;
     private bool observeReach;
     private bool observeAim;
+    // Reserve a separate width range so older exports still identify their inputs by shape.
+    private const int AttackReadyInputWidth = 4;
+    private bool observeAttackReady;
 
     private MeleeFighter fighter;
     private MeleeFighter opponent;
@@ -20,7 +23,7 @@ public sealed class SelfPlayFighterAgent : Agent
     private Vector2 movement;
 
     public static SelfPlayFighterAgent Attach(MeleeFighter fighter, MeleeFighter opponent,
-        ArenaRound round, Bounds bounds, int team, ModelAsset model = null, bool observeReach = false, bool observeAim = false)
+        ArenaRound round, Bounds bounds, int team, ModelAsset model = null, bool observeReach = false, bool observeAim = false, bool observeAttackReady = false)
     {
         if (model != null)
         {
@@ -29,6 +32,10 @@ public sealed class SelfPlayFighterAgent : Agent
                 if (input.name == "obs_0" && input.shape.rank == 2)
                 {
                     int extraInputs = input.shape.Get(1) - ObservationSize;
+                    observeAttackReady = extraInputs >= AttackReadyInputWidth
+                        && extraInputs < 2 * AttackReadyInputWidth;
+                    if (observeAttackReady)
+                        extraInputs -= AttackReadyInputWidth;
                     observeReach = extraInputs == 1 || extraInputs == 3;
                     observeAim = extraInputs == 2 || extraInputs == 3;
                     break;
@@ -39,7 +46,8 @@ public sealed class SelfPlayFighterAgent : Agent
         var parameters = fighter.gameObject.AddComponent<BehaviorParameters>();
         parameters.BehaviorName = "ArenaDuel";
         parameters.TeamId = team;
-        parameters.BrainParameters.VectorObservationSize = ObservationSize + (observeReach ? 1 : 0) + (observeAim ? 2 : 0);
+        parameters.BrainParameters.VectorObservationSize = ObservationSize + (observeReach ? 1 : 0) + (observeAim ? 2 : 0)
+            + (observeAttackReady ? AttackReadyInputWidth : 0);
         parameters.BrainParameters.ActionSpec = new ActionSpec(4, new[] { 5 });
         if (model != null)
         {
@@ -51,6 +59,7 @@ public sealed class SelfPlayFighterAgent : Agent
         var agent = fighter.gameObject.AddComponent<SelfPlayFighterAgent>();
         agent.observeReach = observeReach;
         agent.observeAim = observeAim;
+        agent.observeAttackReady = observeAttackReady;
         agent.Configure(opponent, round, bounds);
         return agent;
     }
@@ -87,6 +96,13 @@ public sealed class SelfPlayFighterAgent : Agent
             float angle = Vector2.SignedAngle(fighter.FacingDirection, toOpponent) * Mathf.Deg2Rad;
             sensor.AddObservation(Mathf.Sin(angle));
             sensor.AddObservation(Mathf.Cos(angle));
+        }
+
+        if (observeAttackReady)
+        {
+            sensor.AddObservation(fighter.IsAttackReady);
+            for (int index = 1; index < AttackReadyInputWidth; index++)
+                sensor.AddObservation(0f);
         }
     }
 

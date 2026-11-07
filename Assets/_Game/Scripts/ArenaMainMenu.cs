@@ -185,6 +185,8 @@ public sealed class ArenaMainMenu : MonoBehaviour
 [UnityEditor.InitializeOnLoad]
 internal static class ArenaTrainingPlayMode
 {
+    private const string AttackReadyObservation = "AdaptiveArena.AttackReadyObservation";
+    internal static bool ObserveAttackReady => UnityEditor.SessionState.GetBool(AttackReadyObservation, false);
     private const string AimObservation = "AdaptiveArena.AimObservation";
     internal static bool ObserveAim => UnityEditor.SessionState.GetBool(AimObservation, false);
     private const string ReachObservation = "AdaptiveArena.ReachObservation";
@@ -282,9 +284,11 @@ internal static class ArenaTrainingPlayMode
             if (evaluate && !PrepareEvaluation(requestValue))
                 return;
 
-            UnityEditor.SessionState.SetBool(ReachObservation, !evaluate && (requestValue == "SelfPlayArena:reach" || requestValue == "SelfPlayArena:reach:aim"));
-            UnityEditor.SessionState.SetBool(AimObservation,
-                !evaluate && (requestValue == "SelfPlayArena:aim" || requestValue == "SelfPlayArena:reach:aim"));
+            string[] observations = evaluate ? System.Array.Empty<string>() : requestValue.Split(':');
+            UnityEditor.SessionState.SetBool(ReachObservation, System.Array.IndexOf(observations, "reach") >= 0);
+            UnityEditor.SessionState.SetBool(AimObservation, System.Array.IndexOf(observations, "aim") >= 0);
+            UnityEditor.SessionState.SetBool(AttackReadyObservation,
+                System.Array.IndexOf(observations, "attack-ready") >= 0);
             var previous = UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene;
             UnityEditor.SessionState.SetString(PreviousScene, UnityEditor.AssetDatabase.GetAssetPath(previous) ?? "");
             UnityEditor.SessionState.SetBool(OverrideActive, true);
@@ -338,6 +342,7 @@ internal static class ArenaTrainingPlayMode
         UnityEditor.SessionState.EraseString(PreviousScene);
         UnityEditor.SessionState.EraseBool(ReachObservation);
         UnityEditor.SessionState.EraseBool(AimObservation);
+        UnityEditor.SessionState.EraseBool(AttackReadyObservation);
 
         if (IsDashboardEvaluation)
         {

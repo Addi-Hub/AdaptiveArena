@@ -75,6 +75,8 @@ public sealed class MeleeFighter : MonoBehaviour
             FacingDirection = direction.normalized;
     }
 
+    public bool IsAttackReady => CanAct;
+
     private bool CanAct => !roundEnded && IsAlive && opponent.IsAlive && !IsWindingUp
         && recoveryRemaining <= 0f && !IsDodging && !IsHealing;
 

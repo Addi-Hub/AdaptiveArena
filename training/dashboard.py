@@ -61,7 +61,7 @@ def saved_step(folder):
     return max(steps, default=0)
 
 
-def run_config(folder, resume, starts, target, seed, rate, interval, rewards=None, arenas=1, swap_sides=False, observe_reach=False, observe_aim=False):
+def run_config(folder, resume, starts, target, seed, rate, interval, rewards=None, arenas=1, swap_sides=False, observe_reach=False, observe_aim=False, observe_attack_ready=False):
     if resume:
         config = read_config(folder / "configuration.yaml")
         step = saved_step(folder)
@@ -79,6 +79,8 @@ def run_config(folder, resume, starts, target, seed, rate, interval, rewards=Non
         behavior = config["behaviors"]["ArenaDuel"]
         behavior["hyperparameters"]["learning_rate"] = rate
         behavior["checkpoint_interval"] = interval
+        if observe_attack_ready:
+            config.setdefault("environment_parameters", {})["observe_attack_ready"] = 1.0
         if observe_aim:
             config.setdefault("environment_parameters", {})["observe_aim_angle"] = 1.0
         if observe_reach:
@@ -202,6 +204,7 @@ class Dashboard:
         self.swap_sides = tk.BooleanVar()
         self.observe_reach = tk.BooleanVar()
         self.observe_aim = tk.BooleanVar()
+        self.observe_attack_ready = tk.BooleanVar()
         self.target = tk.StringVar(value="500000")
         self.seed = tk.StringVar(value="4107")
         self.rate = tk.StringVar(value="0.0003")
@@ -248,6 +251,8 @@ class Dashboard:
                         variable=self.observe_reach).grid(row=7, column=0, columnspan=3, sticky="w")
         ttk.Checkbutton(settings, text="Observe signed aim angle (new runs)",
                         variable=self.observe_aim).grid(row=8, column=0, columnspan=3, sticky="w")
+        ttk.Checkbutton(settings, text="Observe attack readiness (new runs)",
+                        variable=self.observe_attack_ready).grid(row=9, column=0, columnspan=3, sticky="w")
         rewards = ttk.LabelFrame(body, text="Rewards for each fighter (signed values)", padding=10)
         rewards.pack(fill="x", pady=(8, 0))
         for column, (key, (label, _)) in enumerate(REWARDS.items()):
@@ -374,11 +379,13 @@ class Dashboard:
                 if any(not math.isfinite(value) or abs(value) > 1e6 for value in rewards.values()):
                     raise ValueError("Rewards must be finite numbers between -1,000,000 and 1,000,000.")
             config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval,
-                                rewards, arenas, self.swap_sides.get(), self.observe_reach.get(), self.observe_aim.get())
+                                rewards, arenas, self.swap_sides.get(), self.observe_reach.get(),
+                                self.observe_aim.get(), self.observe_attack_ready.get())
             # The exported run configuration serializes constant parameters as curricula.
             observations = []
             parameters = config.get("environment_parameters") or {}
-            for key, label in (("observe_attack_reach", "reach"), ("observe_aim_angle", "aim")):
+            for key, label in (("observe_attack_reach", "reach"), ("observe_aim_angle", "aim"),
+                               ("observe_attack_ready", "attack-ready")):
                 value = parameters.get(key, 0)
                 if isinstance(value, dict):
                     value = value["curriculum"][0]["value"]["sampler_parameters"]["value"]

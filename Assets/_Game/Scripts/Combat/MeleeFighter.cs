@@ -31,13 +31,10 @@ public sealed class MeleeFighter : MonoBehaviour
     private const int MaxHealCharges = 2;
     private const float HealDuration = 2f;
     private const float HealSpeedMultiplier = 0.5f;
+    private const float KnockbackDuration = 0.18f;
 
-    private const int ArcSegments = 16;
-    private readonly Vector3[] outline = new Vector3[ArcSegments + 3];
     private Rigidbody2D body;
-    private SpriteRenderer fighterSprite;
-    private LineRenderer telegraph;
-    private Color healthyColor;
+    private FighterEffects effects;
     private Attack activeAttack;
     private Vector2 attackDirection;
     private float windupRemaining;
@@ -47,6 +44,8 @@ public sealed class MeleeFighter : MonoBehaviour
     private Vector2 dodgeDirection;
     private float healRemaining;
     private bool roundEnded;
+    private Vector2 knockbackVelocity;
+    private float knockbackEndsAt;
 
     public int Health { get; private set; }
     public int MaxHealth => maxHealth;
@@ -56,8 +55,8 @@ public sealed class MeleeFighter : MonoBehaviour
     public bool IsDodging => Time.time < dodgeEndsAt;
     public bool IsHealing => healRemaining > 0f;
     public bool IsDodgeReady => !roundEnded && Time.time >= dodgeReadyAt;
-    public Vector2 AttackDirection => attackDirection;
     public float HeavyReach => heavy.reach;
+    public void Face(Vector2 direction) => effects.Face(direction);
 
     private bool CanAct => !roundEnded && IsAlive && opponent.IsAlive && !IsWindingUp
         && recoveryRemaining <= 0f && !IsDodging && !IsHealing;
@@ -66,17 +65,8 @@ public sealed class MeleeFighter : MonoBehaviour
     {
         Health = maxHealth;
         body = GetComponent<Rigidbody2D>();
-        fighterSprite = GetComponent<SpriteRenderer>();
-        healthyColor = fighterSprite.color;
-
-        telegraph = gameObject.AddComponent<LineRenderer>();
-        telegraph.enabled = false;
-        telegraph.sharedMaterial = fighterSprite.sharedMaterial;
-        telegraph.useWorldSpace = false;
-        telegraph.positionCount = outline.Length;
-        telegraph.widthMultiplier = 0.045f;
-        telegraph.sortingLayerID = fighterSprite.sortingLayerID;
-        telegraph.sortingOrder = fighterSprite.sortingOrder + 2;
+        effects = gameObject.AddComponent<FighterEffects>();
+        effects.Initialize(GetComponent<SpriteRenderer>());
     }
 
     public bool TryAttack(bool isHeavy, Vector2 direction)
@@ -87,7 +77,8 @@ public sealed class MeleeFighter : MonoBehaviour
         activeAttack = isHeavy ? heavy : light;
         attackDirection = direction.normalized;
         windupRemaining = activeAttack.windup;
-        ShowTelegraph(isHeavy ? new Color(1f, 0.35f, 0.20f) : new Color(1f, 0.85f, 0.35f));
+        effects.WindUp(attackDirection, activeAttack.reach, activeAttack.coneAngle,
+            activeAttack.windup, isHeavy);
         return true;
     }
 
@@ -97,6 +88,7 @@ public sealed class MeleeFighter : MonoBehaviour
             return false;
 
         dodgeDirection = direction.normalized;
+        knockbackEndsAt = 0f;
         dodgeEndsAt = Time.time + dodgeDuration;
         dodgeReadyAt = dodgeEndsAt + dodgeCooldown;
         return true;
@@ -114,6 +106,8 @@ public sealed class MeleeFighter : MonoBehaviour
 
     public Vector2 GetMovementVelocity(Vector2 input, float moveSpeed)
     {
+        if (Time.time < knockbackEndsAt)
+            return knockbackVelocity * Mathf.Clamp01((knockbackEndsAt - Time.time) / KnockbackDuration);
         if (roundEnded || !IsAlive)
             return Vector2.zero;
         if (IsDodging)
@@ -134,7 +128,7 @@ public sealed class MeleeFighter : MonoBehaviour
             if (!IsHealing)
             {
                 Health = Mathf.Min(maxHealth, Health + HealAmount);
-                UpdateHealthColor();
+                effects.HealComplete();
             }
         }
 
@@ -148,12 +142,15 @@ public sealed class MeleeFighter : MonoBehaviour
         if (IsWindingUp)
             return;
 
-        telegraph.enabled = false;
+        effects.Swing();
         recoveryRemaining = activeAttack.recovery;
         Vector2 offset = opponent.body.position - body.position;
         if (opponent.IsAlive && offset.sqrMagnitude <= activeAttack.reach * activeAttack.reach
             && Vector2.Angle(attackDirection, offset) <= activeAttack.coneAngle * 0.5f)
-            opponent.TakeDamage(activeAttack.damage);
+        {
+            Vector2 pushDirection = offset.sqrMagnitude > 0.0001f ? offset.normalized : attackDirection;
+            opponent.TakeDamage(activeAttack.damage, pushDirection);
+        }
     }
 
     public void EndRound()
@@ -162,48 +159,25 @@ public sealed class MeleeFighter : MonoBehaviour
         windupRemaining = 0f;
         healRemaining = 0f;
         dodgeEndsAt = 0f;
-        telegraph.enabled = false;
+        effects.CancelWindup();
         body.linearVelocity = Vector2.zero;
     }
 
-    private void TakeDamage(int damage)
+    private void TakeDamage(int damage, Vector2 pushDirection)
     {
         if (IsDodging)
             return;
 
         Health = Mathf.Max(0, Health - damage);
-        UpdateHealthColor();
+        knockbackVelocity = pushDirection * (4f + damage * 0.12f);
+        knockbackEndsAt = Time.time + KnockbackDuration;
+        effects.Hit();
         if (IsAlive)
             return;
 
         windupRemaining = 0f;
         healRemaining = 0f;
-        telegraph.enabled = false;
+        effects.CancelWindup();
         body.linearVelocity = Vector2.zero;
-    }
-
-    private void UpdateHealthColor()
-    {
-        fighterSprite.color = Color.Lerp(new Color(0.25f, 0.25f, 0.28f), healthyColor,
-            (float)Health / maxHealth);
-    }
-
-    private void ShowTelegraph(Color color)
-    {
-        float facingAngle = Mathf.Atan2(attackDirection.y, attackDirection.x) * Mathf.Rad2Deg;
-        float halfCone = activeAttack.coneAngle * 0.5f;
-        outline[0] = Vector3.zero;
-        outline[outline.Length - 1] = Vector3.zero;
-        for (int step = 0; step <= ArcSegments; step++)
-        {
-            float angle = (facingAngle + Mathf.Lerp(-halfCone, halfCone, (float)step / ArcSegments))
-                * Mathf.Deg2Rad;
-            outline[step + 1] = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle)) * activeAttack.reach;
-        }
-
-        telegraph.startColor = color;
-        telegraph.endColor = color;
-        telegraph.SetPositions(outline);
-        telegraph.enabled = true;
     }
 }

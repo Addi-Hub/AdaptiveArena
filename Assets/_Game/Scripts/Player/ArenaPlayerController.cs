@@ -7,7 +7,6 @@ public sealed class ArenaPlayerController : MonoBehaviour
 {
     [SerializeField] private InputActionAsset inputActions;
     [SerializeField] private Camera arenaCamera;
-    [SerializeField] private Transform facingMarker;
     [SerializeField, Min(0f)] private float moveSpeed = 5f;
 
     private Rigidbody2D body;
@@ -74,20 +73,6 @@ public sealed class ArenaPlayerController : MonoBehaviour
             fighter.TryAttack(isHeavy: false, direction: aimDirection);
     }
 
-    private void OnGUI()
-    {
-        string heal = fighter.IsHealing ? " (healing)" : "";
-        string dodge = fighter.IsDodging ? "Dodging" : fighter.IsDodgeReady ? "Ready" : "Cooling down";
-        GUI.Box(new Rect(12, 12, 280, 36),
-            $"HP {fighter.Health}/{fighter.MaxHealth}    Heals {fighter.HealCharges}{heal}    {dodge}");
-    }
-
-    private void LateUpdate()
-    {
-        if (fighter.IsAlive)
-            facingMarker.right = fighter.IsWindingUp ? fighter.AttackDirection : aimDirection;
-    }
-
     private void UpdateAim(Vector2 cursorPosition)
     {
         Ray cursorRay = arenaCamera.ScreenPointToRay(cursorPosition);
@@ -97,6 +82,9 @@ public sealed class ArenaPlayerController : MonoBehaviour
 
         Vector2 aim = cursorRay.GetPoint(distance) - transform.position;
         if (aim.sqrMagnitude > 0.0001f)
+        {
             aimDirection = aim.normalized;
+            fighter.Face(aimDirection);
+        }
     }
 }

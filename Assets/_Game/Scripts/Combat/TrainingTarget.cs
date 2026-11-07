@@ -14,6 +14,7 @@ public sealed class TrainingTarget : MonoBehaviour
     private ArenaRound round;
     private float nextAttackAt;
     private bool baselineBot;
+    private bool sparringDodges;
     private bool nextAttackIsHeavy;
 
     private void Awake()
@@ -29,9 +30,10 @@ public sealed class TrainingTarget : MonoBehaviour
     private void OnEnable() => round.RoundReset += ResetTactics;
     private void OnDisable() => round.RoundReset -= ResetTactics;
 
-    public void EnableSparring()
+    public void EnableSparring(bool canDodge)
     {
         baselineBot = false;
+        sparringDodges = canDodge;
         ResetTactics();
         enabled = true;
     }
@@ -47,11 +49,12 @@ public sealed class TrainingTarget : MonoBehaviour
         Vector2 direction = player.position - body.position;
         fighter.Face(direction);
 
+        if ((baselineBot || sparringDodges) && !fighter.IsHealing
+            && playerFighter.IsAboutToHit(body.position, 0.12f))
+            fighter.TryDodge(-direction);
+
         if (baselineBot)
         {
-            if (!fighter.IsHealing && playerFighter.IsAboutToHit(body.position, 0.12f))
-                fighter.TryDodge(-direction);
-
             bool wantsHeal = fighter.Health <= fighter.MaxHealth * 0.5f && fighter.HealCharges > 0;
             if (wantsHeal && direction.sqrMagnitude > playerFighter.MaxAttackReach * playerFighter.MaxAttackReach)
                 fighter.TryHeal();

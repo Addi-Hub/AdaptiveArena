@@ -73,6 +73,7 @@ def run_config(folder, resume, starts, target, seed, rate, interval, rewards=Non
         if target <= step:
             raise ValueError(f"Target steps must exceed the saved step ({step:,}).")
         config["checkpoint_settings"] = {}
+        config["behaviors"]["ArenaDuel"].pop("init_path", None)
     else:
         if folder.exists():
             raise ValueError("That run ID already exists. Choose a new ID or resume the run.")
@@ -96,6 +97,24 @@ def run_config(folder, resume, starts, target, seed, rate, interval, rewards=Non
     if rewards is not None:
         config["environment_parameters"] = {**(config.get("environment_parameters") or {}), **rewards}
     config["behaviors"]["ArenaDuel"]["max_steps"] = target
+    return config
+
+
+def dodging_sparring_config(source, destination, target):
+    if destination.exists():
+        raise ValueError("Choose a new run ID for the dodging sparring run.")
+    if not (source / "ArenaDuel" / "checkpoint.pt").is_file():
+        raise ValueError("Select a sparring run with a saved trainer checkpoint.")
+    config = read_config(source / "configuration.yaml")
+    behavior = config["behaviors"]["ArenaDuel"]
+    if behavior.get("self_play"):
+        raise ValueError("Select a fixed-opponent sparring run.")
+    config["checkpoint_settings"] = {}
+    behavior.pop("init_path", None)
+    behavior["max_steps"] = target
+    config["environment_parameters"] = {
+        **(config.get("environment_parameters") or {}), "sparring_dodge": 1.0
+    }
     return config
 
 
@@ -285,9 +304,14 @@ class Dashboard:
         self.resume_button.pack(side="left", padx=8)
         self.stop_button = ttk.Button(controls, text="Stop Training", command=self.stop, state="disabled")
         self.stop_button.pack(side="left")
-        self.evaluate_button = ttk.Button(body, text="Evaluate selected run vs Baseline Bot",
+        evaluation_controls = ttk.Frame(body)
+        evaluation_controls.pack(fill="x", pady=(0, 8))
+        self.evaluate_button = ttk.Button(evaluation_controls, text="Evaluate selected run vs Baseline Bot",
                                           command=self.evaluate, state="disabled")
-        self.evaluate_button.pack(anchor="w", pady=(0, 8))
+        self.evaluate_button.pack(side="left")
+        self.dodging_button = ttk.Button(evaluation_controls, text="Continue selected vs Dodging Sparring Bot",
+                                         command=lambda: self.launch(False, dodging=True), state="disabled")
+        self.dodging_button.pack(side="left", padx=8)
         stats = ttk.LabelFrame(body, text="Latest reported statistics", padding=10)
         stats.pack(fill="x")
         ttk.Label(stats, textvariable=self.progress_text).grid(row=0, column=0, columnspan=4, sticky="w")
@@ -324,6 +348,8 @@ class Dashboard:
         self.resume_button.configure(state="normal" if idle and self.selected else "disabled")
         has_export = bool(self.selected) and (RESULTS / self.selected / "ArenaDuel.onnx").is_file()
         self.evaluate_button.configure(state="normal" if idle and has_export else "disabled")
+        has_checkpoint = bool(self.selected) and (RESULTS / self.selected / "ArenaDuel" / "checkpoint.pt").is_file()
+        self.dodging_button.configure(state="normal" if idle and has_checkpoint else "disabled")
 
     def evaluate(self):
         run_id = self.run.get()
@@ -366,36 +392,45 @@ class Dashboard:
         self.run_picker.configure(state="readonly")
         self.select_run()
 
-    def launch(self, resume):
+    def launch(self, resume, dodging=False):
         run_id = self.run.get() if resume else self.name.get().strip()
         try:
             if not RUN_ID.fullmatch(run_id):
                 raise ValueError("Use a run ID of up to 64 letters, digits, hyphens or underscores.")
             target = int(self.target.get())
-            arenas = int(self.arenas.get())
-            if not 1 <= arenas <= 16:
-                raise ValueError("Parallel arenas must be between 1 and 16.")
-            seed = 0 if resume else int(self.seed.get())
-            rate = 0.0 if resume else float(self.rate.get())
-            interval = 0 if resume else int(self.interval.get())
-            if target <= 0 or (not resume and not (0 <= seed < 2**32 and 0 < rate <= 1 and interval > 0)):
-                raise ValueError("Enter positive steps, a learning rate in (0, 1], and a seed from 0 to 4294967295.")
-            folder = RESULTS / run_id
-            rewards = None
-            if not resume or self.override_rewards.get():
-                rewards = {key: float(value.get()) for key, value in self.rewards.items()}
-                if not 0 <= rewards["reward_face_opponent"] <= 0.01:
-                    raise ValueError("Facing bonus must be between 0 and 0.01 per decision.")
-                if any(not math.isfinite(value) or abs(value) > 1e6 for value in rewards.values()):
-                    raise ValueError("Rewards must be finite numbers between -1,000,000 and 1,000,000.")
-            config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval,
-                                rewards, arenas, self.swap_sides.get(), self.observe_reach.get(),
-                                self.observe_aim.get(), self.observe_attack_ready.get(), self.sparring.get())
+            if target <= 0:
+                raise ValueError("Enter a positive training step target.")
+            if dodging:
+                source_id = self.run.get()
+                if not RUN_ID.fullmatch(source_id):
+                    raise ValueError("Select a sparring run first.")
+                config = dodging_sparring_config(RESULTS / source_id, RESULTS / run_id, target)
+                arenas = config["env_settings"]["num_areas"]
+            else:
+                arenas = int(self.arenas.get())
+                if not 1 <= arenas <= 16:
+                    raise ValueError("Parallel arenas must be between 1 and 16.")
+                seed = 0 if resume else int(self.seed.get())
+                rate = 0.0 if resume else float(self.rate.get())
+                interval = 0 if resume else int(self.interval.get())
+                if target <= 0 or (not resume and not (0 <= seed < 2**32 and 0 < rate <= 1 and interval > 0)):
+                    raise ValueError("Enter positive steps, a learning rate in (0, 1], and a seed from 0 to 4294967295.")
+                folder = RESULTS / run_id
+                rewards = None
+                if not resume or self.override_rewards.get():
+                    rewards = {key: float(value.get()) for key, value in self.rewards.items()}
+                    if not 0 <= rewards["reward_face_opponent"] <= 0.01:
+                        raise ValueError("Facing bonus must be between 0 and 0.01 per decision.")
+                    if any(not math.isfinite(value) or abs(value) > 1e6 for value in rewards.values()):
+                        raise ValueError("Rewards must be finite numbers between -1,000,000 and 1,000,000.")
+                config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval,
+                                    rewards, arenas, self.swap_sides.get(), self.observe_reach.get(),
+                                    self.observe_aim.get(), self.observe_attack_ready.get(), self.sparring.get())
             # The exported run configuration serializes constant parameters as curricula.
             observations = []
             parameters = config.get("environment_parameters") or {}
             for key, label in (("observe_attack_reach", "reach"), ("observe_aim_angle", "aim"),
-                               ("observe_attack_ready", "attack-ready")):
+                               ("observe_attack_ready", "attack-ready"), ("sparring_dodge", "sparring-dodge")):
                 value = parameters.get(key, 0)
                 if isinstance(value, dict):
                     value = value["curriculum"][0]["value"]["sampler_parameters"]["value"]
@@ -416,6 +451,8 @@ class Dashboard:
             command.append("--max-lifetime-restarts=0")
             if resume:
                 command.append("--resume")
+            elif dodging:
+                command.append(f"--initialize-from={source_id}")
             self.process = subprocess.Popen(
                 command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace",

@@ -74,11 +74,13 @@ public sealed class SelfPlayArena : MonoBehaviour
         }
 
         bool sparring = false;
+        bool sparringDodges = false;
         bool observeReach = false;
         bool observeAim = false;
         bool observeAttackReady = false;
 #if UNITY_EDITOR
         sparring = ArenaTrainingPlayMode.UseSparringOpponent;
+        sparringDodges = ArenaTrainingPlayMode.SparringDodges;
         observeReach = ArenaTrainingPlayMode.ObserveReach;
         observeAim = ArenaTrainingPlayMode.ObserveAim;
         observeAttackReady = ArenaTrainingPlayMode.ObserveAttackReady;
@@ -86,7 +88,7 @@ public sealed class SelfPlayArena : MonoBehaviour
         firstAgent = SelfPlayFighterAgent.Attach(first, second, round, floor.bounds, 0,
             observeReach: observeReach, observeAim: observeAim, observeAttackReady: observeAttackReady);
         if (sparring)
-            second.GetComponent<TrainingTarget>().EnableSparring();
+            second.GetComponent<TrainingTarget>().EnableSparring(sparringDodges);
         else
             secondAgent = SelfPlayFighterAgent.Attach(second, first, round, floor.bounds, 1,
                 observeReach: observeReach, observeAim: observeAim, observeAttackReady: observeAttackReady);

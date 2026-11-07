@@ -185,6 +185,8 @@ public sealed class ArenaMainMenu : MonoBehaviour
 [UnityEditor.InitializeOnLoad]
 internal static class ArenaTrainingPlayMode
 {
+    private const string SparringDodge = "AdaptiveArena.SparringDodge";
+    internal static bool SparringDodges => UnityEditor.SessionState.GetBool(SparringDodge, false);
     private const string SparringOpponent = "AdaptiveArena.SparringOpponent";
     internal static bool UseSparringOpponent => UnityEditor.SessionState.GetBool(SparringOpponent, false);
     private const string AttackReadyObservation = "AdaptiveArena.AttackReadyObservation";
@@ -292,6 +294,7 @@ internal static class ArenaTrainingPlayMode
             UnityEditor.SessionState.SetBool(AttackReadyObservation,
                 System.Array.IndexOf(observations, "attack-ready") >= 0);
             UnityEditor.SessionState.SetBool(SparringOpponent, System.Array.IndexOf(observations, "sparring") >= 0);
+            UnityEditor.SessionState.SetBool(SparringDodge, System.Array.IndexOf(observations, "sparring-dodge") >= 0);
             var previous = UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene;
             UnityEditor.SessionState.SetString(PreviousScene, UnityEditor.AssetDatabase.GetAssetPath(previous) ?? "");
             UnityEditor.SessionState.SetBool(OverrideActive, true);
@@ -347,6 +350,7 @@ internal static class ArenaTrainingPlayMode
         UnityEditor.SessionState.EraseBool(AimObservation);
         UnityEditor.SessionState.EraseBool(AttackReadyObservation);
         UnityEditor.SessionState.EraseBool(SparringOpponent);
+        UnityEditor.SessionState.EraseBool(SparringDodge);
 
         if (IsDashboardEvaluation)
         {

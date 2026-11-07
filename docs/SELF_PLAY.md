@@ -31,3 +31,14 @@ Use Unity 6000.3.9f1 and Python 3.10.12. The Unity project requests ML-Agents 4.
 4. Check the console for trainer progress and the run folder `results/arena-smoke-01/` for exported `.onnx` files. Use a new run ID for a fresh smoke test.
 
 The 10,000-step smoke run checks wiring and checkpoint creation. Use the separate baseline evaluation to judge policy strength.
+
+## Evaluate a frozen checkpoint
+
+Stop the trainer and leave Unity Play Mode. From the project root, copy the smoke checkpoint into the local import folder.
+
+```powershell
+New-Item -ItemType Directory -Force Assets\_Game\LocalEvaluation | Out-Null
+Copy-Item results\arena-smoke-01\ArenaDuel.onnx Assets\_Game\LocalEvaluation\ArenaDuel.onnx
+```
+
+Let Unity import the model, then open `Assets/_Game/Scenes/BaselineEvaluation.unity` and press **Play**. The evaluation uses deterministic inference and runs 100 matches at 10× simulation speed. Each pair repeats the same starting heights with left and right sides swapped. Unity prints the win rate and writes one row per match to `results/baseline-evaluations/`, including the checkpoint hash, seed, and outcome. The win rate counts every match, including draws.

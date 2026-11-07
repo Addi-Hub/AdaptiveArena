@@ -123,6 +123,8 @@ __pycache__/
 # ML-Agents outputs and local experiment artifacts
 /results/
 /training/results/
+/Assets/_Game/LocalEvaluation/
+/Assets/_Game/LocalEvaluation.meta
 /training/envs/
 /analysis/outputs/
 

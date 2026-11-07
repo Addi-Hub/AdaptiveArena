@@ -1,5 +1,7 @@
+using Unity.InferenceEngine;
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
+using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
 using UnityEngine;
 
@@ -15,7 +17,27 @@ public sealed class SelfPlayFighterAgent : Agent
     private Bounds arenaBounds;
     private Vector2 movement;
 
-    public void Configure(MeleeFighter other, ArenaRound arenaRound, Bounds bounds)
+    public static SelfPlayFighterAgent Attach(MeleeFighter fighter, MeleeFighter opponent,
+        ArenaRound round, Bounds bounds, int team, ModelAsset model = null)
+    {
+        var parameters = fighter.gameObject.AddComponent<BehaviorParameters>();
+        parameters.BehaviorName = "ArenaDuel";
+        parameters.TeamId = team;
+        parameters.BrainParameters.VectorObservationSize = ObservationSize;
+        parameters.BrainParameters.ActionSpec = new ActionSpec(4, new[] { 5 });
+        if (model != null)
+        {
+            parameters.Model = model;
+            parameters.BehaviorType = BehaviorType.InferenceOnly;
+            parameters.DeterministicInference = true;
+        }
+
+        var agent = fighter.gameObject.AddComponent<SelfPlayFighterAgent>();
+        agent.Configure(opponent, round, bounds);
+        return agent;
+    }
+
+    private void Configure(MeleeFighter other, ArenaRound arenaRound, Bounds bounds)
     {
         fighter = GetComponent<MeleeFighter>();
         body = GetComponent<Rigidbody2D>();

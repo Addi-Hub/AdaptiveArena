@@ -6,6 +6,7 @@ public sealed class TrainingTarget : MonoBehaviour
 {
     [SerializeField] private Rigidbody2D player;
     [SerializeField, Min(0.1f)] private float attackInterval = 3f;
+    [SerializeField] private bool forceBaseline;
 
     private MeleeFighter fighter;
     private MeleeFighter playerFighter;
@@ -21,7 +22,7 @@ public sealed class TrainingTarget : MonoBehaviour
         playerFighter = player.GetComponent<MeleeFighter>();
         round = player.GetComponent<ArenaRound>();
         body = GetComponent<Rigidbody2D>();
-        baselineBot = ArenaMainMenu.UseBaselineBot;
+        baselineBot = forceBaseline || ArenaMainMenu.UseBaselineBot;
         ResetTactics();
     }
 

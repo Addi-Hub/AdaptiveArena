@@ -1,6 +1,4 @@
 using Unity.MLAgents;
-using Unity.MLAgents.Actuators;
-using Unity.MLAgents.Policies;
 using UnityEngine;
 
 [RequireComponent(typeof(ArenaRound))]
@@ -28,24 +26,11 @@ public sealed class SelfPlayArena : MonoBehaviour
             return;
         }
 
-        firstAgent = AddAgent(first, second, 0);
-        secondAgent = AddAgent(second, first, 1);
+        firstAgent = SelfPlayFighterAgent.Attach(first, second, round, floor.bounds, 0);
+        secondAgent = SelfPlayFighterAgent.Attach(second, first, round, floor.bounds, 1);
         academy.AgentPreStep += RequestDecisions;
         academy.OnEnvironmentReset += ResetRound;
         round.RoundEnded += FinishRound;
-    }
-
-    private SelfPlayFighterAgent AddAgent(MeleeFighter fighter, MeleeFighter opponent, int team)
-    {
-        var parameters = fighter.gameObject.AddComponent<BehaviorParameters>();
-        parameters.BehaviorName = "ArenaDuel";
-        parameters.TeamId = team;
-        parameters.BrainParameters.VectorObservationSize = SelfPlayFighterAgent.ObservationSize;
-        parameters.BrainParameters.ActionSpec = new ActionSpec(4, new[] { 5 });
-
-        var agent = fighter.gameObject.AddComponent<SelfPlayFighterAgent>();
-        agent.Configure(opponent, round, floor.bounds);
-        return agent;
     }
 
     private void RequestDecisions(int step)

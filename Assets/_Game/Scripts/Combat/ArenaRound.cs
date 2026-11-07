@@ -8,9 +8,11 @@ public sealed class ArenaRound : MonoBehaviour
     [SerializeField] private MeleeFighter player;
     [SerializeField] private MeleeFighter opponent;
     [SerializeField, Min(1f)] private float duration = 60f;
+    [SerializeField] private bool showHud = true;
 
     private float remaining;
     public Outcome Result { get; private set; }
+    public float TimeFractionRemaining => remaining / duration;
     public event System.Action<Outcome> RoundEnded;
     public event System.Action RoundReset;
     private GUIStyle label;
@@ -59,6 +61,9 @@ public sealed class ArenaRound : MonoBehaviour
 
     private void OnGUI()
     {
+        if (!showHud)
+            return;
+
         label ??= MakeStyle(15);
         number ??= MakeStyle(20);
         timer ??= MakeStyle(38);

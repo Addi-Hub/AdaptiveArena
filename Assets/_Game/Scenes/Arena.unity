@@ -841,6 +841,7 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   player: {fileID: 1103}
   attackInterval: 3
+  arenaFloor: {fileID: 1012}
 --- !u!114 &1107
 MonoBehaviour:
   m_ObjectHideFlags: 0

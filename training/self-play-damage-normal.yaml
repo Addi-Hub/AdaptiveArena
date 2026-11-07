@@ -1,0 +1,26 @@
+behaviors:
+  ArenaDuel:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 128
+      buffer_size: 1024
+      learning_rate: 0.0003
+    network_settings:
+      normalize: true
+      hidden_units: 64
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    self_play:
+      save_steps: 1000
+      team_change: 4000
+      swap_steps: 1000
+      window: 4
+      play_against_latest_model_ratio: 0.5
+    max_steps: 50000
+    time_horizon: 64
+    summary_freq: 500
+    checkpoint_interval: 10000
+    keep_checkpoints: 4

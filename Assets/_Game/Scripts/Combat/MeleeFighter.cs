@@ -39,6 +39,7 @@ public sealed class MeleeFighter : MonoBehaviour
     private float spawnRotation;
     private FighterEffects effects;
     private Attack activeAttack;
+    private bool activeAttackIsHeavy;
     private float windupRemaining;
     private float recoveryRemaining;
     private float dodgeEndsAt;
@@ -60,12 +61,23 @@ public sealed class MeleeFighter : MonoBehaviour
     public float GetAttackReach(bool isHeavy) => isHeavy ? heavy.reach : light.reach;
     public float MaxAttackReach => Mathf.Max(light.reach, heavy.reach);
     public Vector2 FacingDirection { get; private set; } = Vector2.right;
+    public event System.Action<bool> AttackStarted;
+    public enum WindupCancellation { Dodge, Knockout, RoundEnd }
+    public enum AttackRejection { Windup, Recovery, Dodging, Healing, RoundEnded, FighterDefeated, InvalidDirection }
+    public event System.Action<AttackRejection> AttackRejected;
+    public event System.Action<WindupCancellation> WindupCancelled;
+    public event System.Action<bool, int> HitLanded;
+    public event System.Action<int> HealthRestored;
+    public event System.Action AttackDodged;
+    public event System.Action<bool, float, float, float, float, string, int> SwingResolved;
 
     public void Face(Vector2 direction)
     {
         if (direction.sqrMagnitude > 0.0001f)
             FacingDirection = direction.normalized;
     }
+
+    public bool IsAttackReady => CanAct;
 
     private bool CanAct => !roundEnded && IsAlive && opponent.IsAlive && !IsWindingUp
         && recoveryRemaining <= 0f && !IsDodging && !IsHealing;
@@ -83,14 +95,32 @@ public sealed class MeleeFighter : MonoBehaviour
     public bool TryAttack(bool isHeavy, Vector2 direction)
     {
         if (!CanAct || direction.sqrMagnitude < 0.0001f)
+        {
+            if (AttackRejected != null)
+                AttackRejected.Invoke(GetAttackRejection());
             return false;
+        }
 
         activeAttack = isHeavy ? heavy : light;
+        activeAttackIsHeavy = isHeavy;
         Face(direction);
         windupRemaining = activeAttack.windup;
         effects.WindUp(activeAttack.reach, activeAttack.coneAngle,
             activeAttack.windup, isHeavy);
+        AttackStarted?.Invoke(isHeavy);
         return true;
+    }
+
+    private AttackRejection GetAttackRejection()
+    {
+        // Report the first blocking condition, so each rejected choice is counted once.
+        if (roundEnded) return AttackRejection.RoundEnded;
+        if (!IsAlive || !opponent.IsAlive) return AttackRejection.FighterDefeated;
+        if (IsWindingUp) return AttackRejection.Windup;
+        if (recoveryRemaining > 0f) return AttackRejection.Recovery;
+        if (IsDodging) return AttackRejection.Dodging;
+        if (IsHealing) return AttackRejection.Healing;
+        return AttackRejection.InvalidDirection;
     }
 
     public bool TryDodge(Vector2 direction)
@@ -99,7 +129,7 @@ public sealed class MeleeFighter : MonoBehaviour
             || direction.sqrMagnitude < 0.0001f)
             return false;
 
-        windupRemaining = 0f;
+        CancelWindup(WindupCancellation.Dodge);
         recoveryRemaining = 0f;
         healRemaining = 0f;
         effects.CancelAttack();
@@ -149,7 +179,10 @@ public sealed class MeleeFighter : MonoBehaviour
             healRemaining = Mathf.Max(0f, healRemaining - Time.fixedDeltaTime);
             if (!IsHealing)
             {
-                Health = Mathf.Min(maxHealth, Health + HealAmount);
+                int restored = Mathf.Min(maxHealth - Health, HealAmount);
+                Health += restored;
+                if (restored > 0)
+                    HealthRestored?.Invoke(restored);
                 effects.HealComplete();
             }
         }
@@ -167,10 +200,33 @@ public sealed class MeleeFighter : MonoBehaviour
         effects.Swing();
         recoveryRemaining = activeAttack.recovery;
         Vector2 offset = opponent.body.position - body.position;
-        if (opponent.IsAlive && IsInsideAttack(offset))
+        bool inRange = offset.sqrMagnitude <= activeAttack.reach * activeAttack.reach;
+        float angle = inRange || SwingResolved != null ? Vector2.Angle(FacingDirection, offset) : 0f;
+        float halfCone = activeAttack.coneAngle * 0.5f;
+        bool inCone = angle <= halfCone;
+        bool targetAlive = opponent.IsAlive;
+        int damageDealt = 0;
+        if (targetAlive && inRange && inCone)
         {
             Vector2 pushDirection = offset.sqrMagnitude > 0.0001f ? offset.normalized : FacingDirection;
-            opponent.TakeDamage(activeAttack.damage, pushDirection);
+            damageDealt = opponent.TakeDamage(activeAttack.damage, pushDirection);
+            if (damageDealt > 0)
+                HitLanded?.Invoke(activeAttackIsHeavy, damageDealt);
+        }
+
+        if (SwingResolved != null)
+        {
+            string outcome = (targetAlive, inRange, inCone, damageDealt) switch
+            {
+                (false, _, _, _) => "target_defeated",
+                (_, false, false, _) => "range_and_aim",
+                (_, false, _, _) => "out_of_range",
+                (_, _, false, _) => "outside_cone",
+                (_, _, _, 0) => "dodged",
+                _ => "hit"
+            };
+            SwingResolved.Invoke(activeAttackIsHeavy, offset.magnitude, activeAttack.reach,
+                angle, halfCone, outcome, damageDealt);
         }
     }
 
@@ -200,28 +256,41 @@ public sealed class MeleeFighter : MonoBehaviour
     public void EndRound()
     {
         roundEnded = true;
-        windupRemaining = 0f;
+        CancelWindup(WindupCancellation.RoundEnd);
         healRemaining = 0f;
         dodgeEndsAt = 0f;
         effects.CancelWindup();
         body.linearVelocity = Vector2.zero;
     }
 
-    private void TakeDamage(int damage, Vector2 pushDirection)
+    private void CancelWindup(WindupCancellation reason)
+    {
+        bool wasWindingUp = IsWindingUp;
+        windupRemaining = 0f;
+        if (wasWindingUp)
+            WindupCancelled?.Invoke(reason);
+    }
+
+    private int TakeDamage(int damage, Vector2 pushDirection)
     {
         if (IsDodging)
-            return;
+        {
+            AttackDodged?.Invoke();
+            return 0;
+        }
 
-        Health = Mathf.Max(0, Health - damage);
+        int damageDealt = Mathf.Min(Health, damage);
+        Health -= damageDealt;
         knockbackVelocity = pushDirection * (4f + damage * 0.12f);
         knockbackEndsAt = Time.time + KnockbackDuration;
         effects.Hit();
         if (IsAlive)
-            return;
+            return damageDealt;
 
-        windupRemaining = 0f;
+        CancelWindup(WindupCancellation.Knockout);
         healRemaining = 0f;
         effects.CancelWindup();
         body.linearVelocity = Vector2.zero;
+        return damageDealt;
     }
 }

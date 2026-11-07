@@ -1,10 +1,11 @@
+using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
 public sealed class ArenaMainMenu : MonoBehaviour
 {
-    private enum Page { Home, Bots, Training, Options }
+    private enum Page { Home, Bots, Options }
 
     public const string SceneName = "MainMenu";
     private const string VolumeKey = "Arena.MasterVolume";
@@ -13,6 +14,7 @@ public sealed class ArenaMainMenu : MonoBehaviour
     private static readonly Color Muted = new Color(0.72f, 0.78f, 0.84f);
 
     public static bool UseBaselineBot { get; private set; }
+    public static ModelAsset TrainedOpponent { get; private set; }
 
     private Page page;
     private GUIStyle heading;
@@ -20,7 +22,11 @@ public sealed class ArenaMainMenu : MonoBehaviour
     private GUIStyle button;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetSelection() => UseBaselineBot = false;
+    private static void ResetSelection()
+    {
+        UseBaselineBot = false;
+        TrainedOpponent = null;
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void LoadVolume() => AudioListener.volume = PlayerPrefs.GetFloat(VolumeKey, 1f);
@@ -53,7 +59,6 @@ public sealed class ArenaMainMenu : MonoBehaviour
         {
             case Page.Home: DrawHome(); break;
             case Page.Bots: DrawBots(); break;
-            case Page.Training: DrawTraining(); break;
             case Page.Options: DrawOptions(); break;
         }
 
@@ -66,7 +71,14 @@ public sealed class ArenaMainMenu : MonoBehaviour
     {
         Title("ADAPTIVE ARENA", "DUEL  /  TRAIN  /  IMPROVE");
         if (Button(209, "Play vs Bot")) page = Page.Bots;
-        if (Button(269, "Training")) page = Page.Training;
+#if UNITY_EDITOR
+        if (Button(269, "Training")) LaunchTrainingDashboard();
+#else
+        bool guiEnabled = GUI.enabled;
+        GUI.enabled = false;
+        Button(269, "Training (Unity Editor)");
+        GUI.enabled = guiEnabled;
+#endif
         if (Button(329, "Options")) page = Page.Options;
         if (Button(389, "Quit"))
         {
@@ -80,7 +92,7 @@ public sealed class ArenaMainMenu : MonoBehaviour
 
     private void DrawBots()
     {
-        Title("CHOOSE A BOT", "SCRIPTED OPPONENTS");
+        Title("CHOOSE A BOT", "DUEL OPPONENTS");
         if (Button(209, "Sparring Partner"))
             StartDuel(false);
         GUI.Label(new Rect(220, 263, 460, 32), "Practices heavy swings with long pauses.", copy);
@@ -88,16 +100,76 @@ public sealed class ArenaMainMenu : MonoBehaviour
         if (Button(314, "Baseline Bot"))
             StartDuel(true);
         GUI.Label(new Rect(200, 368, 500, 32), "Mixes light and heavy swings, dodges, and heals.", copy);
+#if UNITY_EDITOR
+        if (Button(414, "Trained Model"))
+            StartTrainedDuel();
+#endif
     }
 
-    private void DrawTraining()
+#if UNITY_EDITOR
+    private static void StartTrainedDuel()
     {
-        Title("TRAINING", "REINFORCEMENT LEARNING");
-        Paint(new Rect(173, 213, 554, 157), new Color(0.08f, 0.12f, 0.17f));
-        GUI.Label(new Rect(193, 231, 514, 31), "TRAINER OFFLINE", copy);
-        GUI.Label(new Rect(193, 270, 514, 31), "Active arenas  0     Episodes  —     Mean reward  —", copy);
-        GUI.Label(new Rect(193, 309, 514, 43), "Connect ML-Agents to start a training run.", copy);
+        const string assetPath = "Assets/_Game/LocalEvaluation/PlayableDuel.onnx";
+        string project = System.IO.Path.GetDirectoryName(Application.dataPath);
+        string checkpoint = System.IO.Path.Combine(project, "results", "500k-vs-baseline-bot", "ArenaDuel.onnx");
+        string destination = System.IO.Path.Combine(project, assetPath);
+        try
+        {
+            if (!System.IO.File.Exists(checkpoint))
+                throw new System.IO.FileNotFoundException("Export ArenaDuel.onnx from the 500k-vs-baseline-bot run first.");
+
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(destination));
+            System.IO.File.Copy(checkpoint, destination, overwrite: true);
+            UnityEditor.AssetDatabase.ImportAsset(assetPath, UnityEditor.ImportAssetOptions.ForceSynchronousImport
+                | UnityEditor.ImportAssetOptions.ForceUpdate);
+            var model = UnityEditor.AssetDatabase.LoadAssetAtPath<ModelAsset>(assetPath);
+            if (model == null)
+                throw new System.IO.IOException("Unity could not import the trained model.");
+
+            StartDuel(false, model);
+        }
+        catch (System.Exception error) when (error is System.IO.IOException || error is System.UnauthorizedAccessException)
+        {
+            UnityEditor.EditorUtility.DisplayDialog("Trained Model", error.Message, "OK");
+        }
     }
+
+    [UnityEditor.MenuItem("Adaptive Arena/Training Dashboard")]
+    private static void LaunchTrainingDashboard()
+    {
+        const string interpreterKey = "AdaptiveArena.TrainingPython";
+        string root = System.IO.Path.GetDirectoryName(Application.dataPath);
+        string defaultPython = System.IO.Path.Combine(
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile),
+            "anaconda3", "envs", "adaptive-arena", "python.exe");
+        string python = UnityEditor.EditorPrefs.GetString(interpreterKey, defaultPython);
+        if (!System.IO.File.Exists(python))
+        {
+            python = UnityEditor.EditorUtility.OpenFilePanel(
+                "Select Python from your ML-Agents environment", "", "exe");
+            if (string.IsNullOrEmpty(python))
+                return;
+            UnityEditor.EditorPrefs.SetString(interpreterKey, python);
+        }
+
+        string script = System.IO.Path.Combine(root, "training", "dashboard.py");
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = python,
+                Arguments = $"\"{script}\"",
+                WorkingDirectory = root,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+        }
+        catch (System.ComponentModel.Win32Exception error)
+        {
+            UnityEditor.EditorUtility.DisplayDialog("Training Dashboard", error.Message, "OK");
+        }
+    }
+#endif
 
     private void DrawOptions()
     {
@@ -120,9 +192,10 @@ public sealed class ArenaMainMenu : MonoBehaviour
 
     private bool Button(float top, string label) => GUI.Button(new Rect(265, top, 370, 48), label, button);
 
-    private static void StartDuel(bool baselineBot)
+    private static void StartDuel(bool baselineBot, ModelAsset model = null)
     {
         UseBaselineBot = baselineBot;
+        TrainedOpponent = model;
         SceneManager.LoadScene("Arena");
     }
 
@@ -146,3 +219,205 @@ public sealed class ArenaMainMenu : MonoBehaviour
         GUI.color = previous;
     }
 }
+
+
+#if UNITY_EDITOR
+[UnityEditor.InitializeOnLoad]
+internal static class ArenaTrainingPlayMode
+{
+    private const string BaselineOpponent = "AdaptiveArena.BaselineOpponent";
+    internal static bool UseBaselineOpponent => UnityEditor.SessionState.GetBool(BaselineOpponent, false);
+    private const string SparringDodge = "AdaptiveArena.SparringDodge";
+    internal static bool SparringDodges => UnityEditor.SessionState.GetBool(SparringDodge, false);
+    private const string SparringOpponent = "AdaptiveArena.SparringOpponent";
+    internal static bool UseSparringOpponent => UnityEditor.SessionState.GetBool(SparringOpponent, false);
+    private const string AttackReadyObservation = "AdaptiveArena.AttackReadyObservation";
+    internal static bool ObserveAttackReady => UnityEditor.SessionState.GetBool(AttackReadyObservation, false);
+    private const string AimObservation = "AdaptiveArena.AimObservation";
+    internal static bool ObserveAim => UnityEditor.SessionState.GetBool(AimObservation, false);
+    private const string ReachObservation = "AdaptiveArena.ReachObservation";
+    internal static bool ObserveReach => UnityEditor.SessionState.GetBool(ReachObservation, false);
+    private const string TrainingScene = "Assets/_Game/Scenes/SelfPlayArena.unity";
+    private const string OverrideActive = "AdaptiveArena.TrainingOverrideActive";
+    private const string PreviousScene = "AdaptiveArena.PreviousPlayScene";
+    private static readonly string Request = System.IO.Path.Combine(
+        System.IO.Path.GetDirectoryName(Application.dataPath), "Library", "ArenaTraining", "play-request");
+    private static readonly string StopRequest = System.IO.Path.Combine(
+        System.IO.Path.GetDirectoryName(Request), "stop-request");
+    private static readonly string EvaluationRequest = System.IO.Path.Combine(
+        System.IO.Path.GetDirectoryName(Request), "evaluation-request");
+    private static readonly string EvaluationStatus = System.IO.Path.Combine(
+        System.IO.Path.GetDirectoryName(Request), "evaluation-status");
+    internal const string EvaluationModel = "Assets/_Game/LocalEvaluation/DashboardDuel.onnx";
+    private const string EvaluationScene = "Assets/_Game/Scenes/BaselineEvaluation.unity";
+    private const string EvaluationSeed = "AdaptiveArena.EvaluationSeed";
+    internal static int GetEvaluationSeed(int fallback) => UnityEditor.SessionState.GetInt(EvaluationSeed, fallback);
+    private const string EvaluationActive = "AdaptiveArena.EvaluationActive";
+    private const string EvaluationComplete = "AdaptiveArena.EvaluationComplete";
+    internal static bool IsDashboardEvaluation => UnityEditor.SessionState.GetBool(EvaluationActive, false);
+    private static double nextPoll;
+
+    internal static void FinishDashboardEvaluation()
+    {
+        UnityEditor.SessionState.SetBool(EvaluationComplete, true);
+        UnityEditor.EditorApplication.ExitPlaymode();
+    }
+
+    static ArenaTrainingPlayMode()
+    {
+        UnityEditor.EditorApplication.update += Poll;
+        UnityEditor.EditorApplication.playModeStateChanged += RestoreStartScene;
+    }
+
+    private static void Poll()
+    {
+        double now = UnityEditor.EditorApplication.timeSinceStartup;
+        if (now < nextPoll)
+            return;
+        nextPoll = now + 0.25;
+        if (UnityEditor.EditorApplication.isCompiling || UnityEditor.EditorApplication.isUpdating)
+            return;
+
+        try
+        {
+            if (System.IO.File.Exists(StopRequest))
+            {
+                bool recent = System.DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(StopRequest)
+                    <= System.TimeSpan.FromSeconds(60);
+                System.IO.File.Delete(StopRequest);
+                if (recent && UnityEditor.EditorApplication.isPlaying &&
+                    SceneManager.GetActiveScene().name == "SelfPlayArena")
+                {
+                    UnityEditor.EditorApplication.ExitPlaymode();
+                    return;
+                }
+            }
+
+            bool evaluate = System.IO.File.Exists(EvaluationRequest);
+            string request = evaluate ? EvaluationRequest : Request;
+            if (!System.IO.File.Exists(request))
+                return;
+
+            if (System.DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(request) > System.TimeSpan.FromSeconds(60))
+            {
+                System.IO.File.Delete(request);
+                if (evaluate)
+                    System.IO.File.WriteAllText(EvaluationStatus, "Evaluation expired before Unity could start it.");
+                return;
+            }
+
+            if (UnityEditor.EditorApplication.isPlaying)
+            {
+                string scene = SceneManager.GetActiveScene().name;
+                if (scene == ArenaMainMenu.SceneName || (!evaluate && scene == "SelfPlayArena"))
+                    UnityEditor.EditorApplication.isPlaying = false;
+                return;
+            }
+
+            if (UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode)
+                return;
+
+            string scenePath = evaluate ? EvaluationScene : TrainingScene;
+            var sceneAsset = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(scenePath);
+            string requestValue = System.IO.File.ReadAllText(request);
+            System.IO.File.Delete(request);
+            if (sceneAsset == null)
+            {
+                Debug.LogError($"Adaptive Arena could not find {scenePath}.");
+                if (evaluate)
+                    System.IO.File.WriteAllText(EvaluationStatus, "Evaluation scene missing.");
+                return;
+            }
+
+            if (evaluate && !PrepareEvaluation(requestValue))
+                return;
+
+            string[] observations = evaluate ? System.Array.Empty<string>() : requestValue.Split(':');
+            UnityEditor.SessionState.SetBool(ReachObservation, System.Array.IndexOf(observations, "reach") >= 0);
+            UnityEditor.SessionState.SetBool(AimObservation, System.Array.IndexOf(observations, "aim") >= 0);
+            UnityEditor.SessionState.SetBool(AttackReadyObservation,
+                System.Array.IndexOf(observations, "attack-ready") >= 0);
+            UnityEditor.SessionState.SetBool(SparringOpponent, System.Array.IndexOf(observations, "sparring") >= 0);
+            UnityEditor.SessionState.SetBool(SparringDodge, System.Array.IndexOf(observations, "sparring-dodge") >= 0);
+            UnityEditor.SessionState.SetBool(BaselineOpponent, System.Array.IndexOf(observations, "baseline-opponent") >= 0);
+            var previous = UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene;
+            UnityEditor.SessionState.SetString(PreviousScene, UnityEditor.AssetDatabase.GetAssetPath(previous) ?? "");
+            UnityEditor.SessionState.SetBool(OverrideActive, true);
+            UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene = sceneAsset;
+            UnityEditor.EditorApplication.EnterPlaymode();
+        }
+        catch (System.IO.IOException)
+        {
+            // The dashboard may have removed the request after its trainer exited.
+        }
+    }
+
+    private static bool PrepareEvaluation(string requestValue)
+    {
+        try
+        {
+            string[] fields = requestValue.Split(':');
+            string runId = fields[0];
+            if (fields.Length > 1)
+            {
+                if (fields.Length != 2 || !int.TryParse(fields[1], out int seed) || seed < 0)
+                    throw new System.IO.IOException("Invalid evaluation seed.");
+                UnityEditor.SessionState.SetInt(EvaluationSeed, seed);
+            }
+            else
+                UnityEditor.SessionState.EraseInt(EvaluationSeed);
+
+            if (!System.Text.RegularExpressions.Regex.IsMatch(runId, @"\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\z"))
+                throw new System.IO.IOException("Invalid run ID.");
+
+            string root = System.IO.Path.GetDirectoryName(Application.dataPath);
+            string source = System.IO.Path.Combine(root, "results", runId, "ArenaDuel.onnx");
+            string target = System.IO.Path.Combine(root, EvaluationModel);
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target));
+            System.IO.File.Copy(source, target, true);
+            UnityEditor.AssetDatabase.ImportAsset(EvaluationModel, UnityEditor.ImportAssetOptions.ForceSynchronousImport);
+            if (UnityEditor.AssetDatabase.LoadAssetAtPath<Unity.InferenceEngine.ModelAsset>(EvaluationModel) == null)
+                throw new System.IO.IOException("Unity could not import the model.");
+
+            System.IO.File.WriteAllText(EvaluationStatus, "Evaluating against Baseline Bot...");
+            UnityEditor.SessionState.SetBool(EvaluationActive, true);
+            UnityEditor.SessionState.EraseBool(EvaluationComplete);
+            return true;
+        }
+        catch (System.IO.IOException error)
+        {
+            System.IO.File.WriteAllText(EvaluationStatus, $"Evaluation could not start. {error.Message}");
+            return false;
+        }
+    }
+
+    private static void RestoreStartScene(UnityEditor.PlayModeStateChange state)
+    {
+        if (state != UnityEditor.PlayModeStateChange.EnteredEditMode ||
+            !UnityEditor.SessionState.GetBool(OverrideActive, false))
+            return;
+
+        string previous = UnityEditor.SessionState.GetString(PreviousScene, "");
+        UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene = string.IsNullOrEmpty(previous)
+            ? null : UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(previous);
+        UnityEditor.SessionState.EraseBool(OverrideActive);
+        UnityEditor.SessionState.EraseString(PreviousScene);
+        UnityEditor.SessionState.EraseBool(ReachObservation);
+        UnityEditor.SessionState.EraseBool(AimObservation);
+        UnityEditor.SessionState.EraseBool(AttackReadyObservation);
+        UnityEditor.SessionState.EraseBool(SparringOpponent);
+        UnityEditor.SessionState.EraseBool(SparringDodge);
+        UnityEditor.SessionState.EraseBool(BaselineOpponent);
+
+        if (IsDashboardEvaluation)
+        {
+            bool complete = UnityEditor.SessionState.GetBool(EvaluationComplete, false);
+            UnityEditor.SessionState.EraseBool(EvaluationActive);
+            UnityEditor.SessionState.EraseInt(EvaluationSeed);
+            UnityEditor.SessionState.EraseBool(EvaluationComplete);
+            System.IO.File.WriteAllText(EvaluationStatus,
+                complete ? "Baseline evaluation complete." : "Baseline evaluation ended early.");
+        }
+    }
+}
+#endif

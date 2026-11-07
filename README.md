@@ -7,13 +7,13 @@ Adaptive Arena is a planned top-down 2D Unity duel where you fight an opponent t
 1. Clone the repository. Set up Git LFS with `git lfs install` before cloning if you will work with binary assets tracked through the repository's LFS rules.
 2. Install Unity **6000.3.9f1** via Unity Hub, as recorded in [ProjectVersion.txt](ProjectSettings/ProjectVersion.txt).
 3. Add the repository root to Unity Hub and open it. Allow Unity to restore the packages in [the manifest](Packages/manifest.json).
-4. Open `Assets/_Game/Scenes/SampleScene.unity` and enter Play Mode to check the 2D URP starter scene. The scene currently contains a camera and a global 2D light. Gameplay, ML-Agents, and training configuration are planned.
+4. Open `Assets/_Game/Scenes/Arena.unity`, enter Play Mode, and focus the Game view. Move with WASD and aim with the mouse. Try moving diagonally and pushing against each wall while tracking the cursor with the gold marker.
 
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| `Assets/_Game/Scenes/` | Game scenes, starting with the sample scene |
+| `Assets/_Game/Scenes/` | Arena prototype and original sample scene |
 | `Assets/_Game/Settings/` | 2D renderer, URP asset, and scene template |
 | `Assets/` | Also holds shared template assets, including input actions and URP global settings |
 | `Packages/` and `ProjectSettings/` | Unity dependencies and project configuration |

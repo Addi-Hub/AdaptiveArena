@@ -67,6 +67,8 @@ public sealed class MeleeFighter : MonoBehaviour
     public event System.Action<AttackRejection> AttackRejected;
     public event System.Action<WindupCancellation> WindupCancelled;
     public event System.Action<bool, int> HitLanded;
+    public event System.Action<int> HealthRestored;
+    public event System.Action AttackDodged;
     public event System.Action<bool, float, float, float, float, string, int> SwingResolved;
 
     public void Face(Vector2 direction)
@@ -177,7 +179,10 @@ public sealed class MeleeFighter : MonoBehaviour
             healRemaining = Mathf.Max(0f, healRemaining - Time.fixedDeltaTime);
             if (!IsHealing)
             {
-                Health = Mathf.Min(maxHealth, Health + HealAmount);
+                int restored = Mathf.Min(maxHealth - Health, HealAmount);
+                Health += restored;
+                if (restored > 0)
+                    HealthRestored?.Invoke(restored);
                 effects.HealComplete();
             }
         }
@@ -269,7 +274,10 @@ public sealed class MeleeFighter : MonoBehaviour
     private int TakeDamage(int damage, Vector2 pushDirection)
     {
         if (IsDodging)
+        {
+            AttackDodged?.Invoke();
             return 0;
+        }
 
         int damageDealt = Mathf.Min(Health, damage);
         Health -= damageDealt;

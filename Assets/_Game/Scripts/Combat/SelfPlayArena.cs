@@ -94,6 +94,10 @@ public sealed class SelfPlayArena : MonoBehaviour
         second.AttackStarted += CountAttempt;
         first.HitLanded += RewardFirstHit;
         second.HitLanded += RewardSecondHit;
+        first.HealthRestored += RewardFirstHeal;
+        second.HealthRestored += RewardSecondHeal;
+        first.AttackDodged += RewardFirstDodge;
+        second.AttackDodged += RewardSecondDodge;
     }
 
     private void RequestDecisions(int step)
@@ -140,6 +144,23 @@ public sealed class SelfPlayArena : MonoBehaviour
     private void RewardFirstHit(bool isHeavy, int damage) => RewardHit(isHeavy, damage, firstAgent, secondAgent);
 
     private void RewardSecondHit(bool isHeavy, int damage) => RewardHit(isHeavy, damage, secondAgent, firstAgent);
+
+    private void RewardFirstHeal(int restored) => RewardHeal(firstAgent, restored);
+    private void RewardSecondHeal(int restored) => RewardHeal(secondAgent, restored);
+
+    private void RewardHeal(SelfPlayFighterAgent agent, int restored)
+    {
+        float reward = academy.EnvironmentParameters.GetWithDefault("reward_hp_healed", 0f);
+        agent.AddReward(restored * reward);
+    }
+
+    private void RewardFirstDodge() => RewardDodge(firstAgent);
+    private void RewardSecondDodge() => RewardDodge(secondAgent);
+
+    private void RewardDodge(SelfPlayFighterAgent agent)
+    {
+        agent.AddReward(academy.EnvironmentParameters.GetWithDefault("reward_attack_dodged", 0f));
+    }
 
     private void RewardHit(bool isHeavy, int damage, SelfPlayFighterAgent attacker, SelfPlayFighterAgent defender)
     {
@@ -223,5 +244,9 @@ public sealed class SelfPlayArena : MonoBehaviour
         second.AttackStarted -= CountAttempt;
         first.HitLanded -= RewardFirstHit;
         second.HitLanded -= RewardSecondHit;
+        first.HealthRestored -= RewardFirstHeal;
+        second.HealthRestored -= RewardSecondHeal;
+        first.AttackDodged -= RewardFirstDodge;
+        second.AttackDodged -= RewardSecondDodge;
     }
 }

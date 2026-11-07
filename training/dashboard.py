@@ -29,6 +29,8 @@ REWARDS = {
     "reward_draw": ("Draw", 0),
     "reward_damage_dealt": ("Per HP dealt", 0.003),
     "reward_damage_taken": ("Per HP taken", -0.003),
+    "reward_hp_healed": ("Per HP healed", 0),
+    "reward_attack_dodged": ("Per attack dodged", 0),
     "reward_face_opponent": ("Facing bonus / decision", 0),
 }
 RUN_ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}")
@@ -255,14 +257,16 @@ class Dashboard:
                         variable=self.observe_attack_ready).grid(row=9, column=0, columnspan=3, sticky="w")
         rewards = ttk.LabelFrame(body, text="Rewards for each fighter (signed values)", padding=10)
         rewards.pack(fill="x", pady=(8, 0))
-        for column, (key, (label, _)) in enumerate(REWARDS.items()):
-            ttk.Label(rewards, text=label).grid(row=0, column=column, sticky="w")
+        reward_columns = 4
+        for index, (key, (label, _)) in enumerate(REWARDS.items()):
+            row, column = divmod(index, reward_columns)
+            ttk.Label(rewards, text=label).grid(row=2 * row, column=column, sticky="w")
             ttk.Entry(rewards, textvariable=self.rewards[key], width=11).grid(
-                row=1, column=column, sticky="ew", padx=(0, 12)
+                row=2 * row + 1, column=column, sticky="ew", padx=(0, 12)
             )
             rewards.columnconfigure(column, weight=1)
         ttk.Checkbutton(rewards, text="Apply these rewards when resuming (otherwise keep saved rewards)",
-                        variable=self.override_rewards).grid(row=2, column=0, columnspan=len(REWARDS), sticky="w")
+                        variable=self.override_rewards).grid(row=4, column=0, columnspan=reward_columns, sticky="w")
         controls = ttk.Frame(body)
         controls.pack(fill="x", pady=10)
         self.start_button = ttk.Button(controls, text="Start new run", command=lambda: self.launch(False))

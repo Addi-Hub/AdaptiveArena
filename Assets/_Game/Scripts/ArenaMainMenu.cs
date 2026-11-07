@@ -1,3 +1,4 @@
+using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
@@ -13,6 +14,7 @@ public sealed class ArenaMainMenu : MonoBehaviour
     private static readonly Color Muted = new Color(0.72f, 0.78f, 0.84f);
 
     public static bool UseBaselineBot { get; private set; }
+    public static ModelAsset TrainedOpponent { get; private set; }
 
     private Page page;
     private GUIStyle heading;
@@ -20,7 +22,11 @@ public sealed class ArenaMainMenu : MonoBehaviour
     private GUIStyle button;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetSelection() => UseBaselineBot = false;
+    private static void ResetSelection()
+    {
+        UseBaselineBot = false;
+        TrainedOpponent = null;
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void LoadVolume() => AudioListener.volume = PlayerPrefs.GetFloat(VolumeKey, 1f);
@@ -68,8 +74,10 @@ public sealed class ArenaMainMenu : MonoBehaviour
 #if UNITY_EDITOR
         if (Button(269, "Training")) LaunchTrainingDashboard();
 #else
-        using (new GUI.DisabledScope(true))
-            Button(269, "Training (Unity Editor)");
+        bool guiEnabled = GUI.enabled;
+        GUI.enabled = false;
+        Button(269, "Training (Unity Editor)");
+        GUI.enabled = guiEnabled;
 #endif
         if (Button(329, "Options")) page = Page.Options;
         if (Button(389, "Quit"))
@@ -84,7 +92,7 @@ public sealed class ArenaMainMenu : MonoBehaviour
 
     private void DrawBots()
     {
-        Title("CHOOSE A BOT", "SCRIPTED OPPONENTS");
+        Title("CHOOSE A BOT", "DUEL OPPONENTS");
         if (Button(209, "Sparring Partner"))
             StartDuel(false);
         GUI.Label(new Rect(220, 263, 460, 32), "Practices heavy swings with long pauses.", copy);
@@ -92,9 +100,40 @@ public sealed class ArenaMainMenu : MonoBehaviour
         if (Button(314, "Baseline Bot"))
             StartDuel(true);
         GUI.Label(new Rect(200, 368, 500, 32), "Mixes light and heavy swings, dodges, and heals.", copy);
+#if UNITY_EDITOR
+        if (Button(414, "Trained Model"))
+            StartTrainedDuel();
+#endif
     }
 
 #if UNITY_EDITOR
+    private static void StartTrainedDuel()
+    {
+        const string assetPath = "Assets/_Game/LocalEvaluation/PlayableDuel.onnx";
+        string project = System.IO.Path.GetDirectoryName(Application.dataPath);
+        string checkpoint = System.IO.Path.Combine(project, "results", "500k-vs-baseline-bot", "ArenaDuel.onnx");
+        string destination = System.IO.Path.Combine(project, assetPath);
+        try
+        {
+            if (!System.IO.File.Exists(checkpoint))
+                throw new System.IO.FileNotFoundException("Export ArenaDuel.onnx from the 500k-vs-baseline-bot run first.");
+
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(destination));
+            System.IO.File.Copy(checkpoint, destination, overwrite: true);
+            UnityEditor.AssetDatabase.ImportAsset(assetPath, UnityEditor.ImportAssetOptions.ForceSynchronousImport
+                | UnityEditor.ImportAssetOptions.ForceUpdate);
+            var model = UnityEditor.AssetDatabase.LoadAssetAtPath<ModelAsset>(assetPath);
+            if (model == null)
+                throw new System.IO.IOException("Unity could not import the trained model.");
+
+            StartDuel(false, model);
+        }
+        catch (System.Exception error) when (error is System.IO.IOException || error is System.UnauthorizedAccessException)
+        {
+            UnityEditor.EditorUtility.DisplayDialog("Trained Model", error.Message, "OK");
+        }
+    }
+
     [UnityEditor.MenuItem("Adaptive Arena/Training Dashboard")]
     private static void LaunchTrainingDashboard()
     {
@@ -153,9 +192,10 @@ public sealed class ArenaMainMenu : MonoBehaviour
 
     private bool Button(float top, string label) => GUI.Button(new Rect(265, top, 370, 48), label, button);
 
-    private static void StartDuel(bool baselineBot)
+    private static void StartDuel(bool baselineBot, ModelAsset model = null)
     {
         UseBaselineBot = baselineBot;
+        TrainedOpponent = model;
         SceneManager.LoadScene("Arena");
     }
 

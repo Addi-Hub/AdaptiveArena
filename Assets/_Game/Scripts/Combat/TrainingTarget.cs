@@ -7,6 +7,7 @@ public sealed class TrainingTarget : MonoBehaviour
     [SerializeField] private Rigidbody2D player;
     [SerializeField, Min(0.1f)] private float attackInterval = 3f;
     [SerializeField] private bool forceBaseline;
+    [SerializeField] private SpriteRenderer arenaFloor;
 
     private MeleeFighter fighter;
     private MeleeFighter playerFighter;
@@ -16,6 +17,8 @@ public sealed class TrainingTarget : MonoBehaviour
     private bool baselineBot;
     private bool sparringDodges;
     private bool nextAttackIsHeavy;
+    private SelfPlayFighterAgent trainedAgent;
+    private int ticksUntilDecision;
     public bool IsBaseline => baselineBot;
 
     private void Awake()
@@ -26,6 +29,15 @@ public sealed class TrainingTarget : MonoBehaviour
         body = GetComponent<Rigidbody2D>();
         baselineBot = forceBaseline || ArenaMainMenu.UseBaselineBot;
         ResetTactics();
+    }
+
+    private void Start()
+    {
+        if (arenaFloor != null && ArenaMainMenu.TrainedOpponent != null)
+        {
+            trainedAgent = SelfPlayFighterAgent.Attach(fighter, playerFighter, round,
+                arenaFloor.bounds, 1, ArenaMainMenu.TrainedOpponent);
+        }
     }
 
     private void OnEnable() => round.RoundReset += ResetTactics;
@@ -41,12 +53,24 @@ public sealed class TrainingTarget : MonoBehaviour
 
     private void ResetTactics()
     {
+        ticksUntilDecision = 0;
+        trainedAgent?.EndEpisode();
         nextAttackAt = 0f;
         nextAttackIsHeavy = !baselineBot;
     }
 
     private void FixedUpdate()
     {
+        if (trainedAgent != null)
+        {
+            if (round.Result == ArenaRound.Outcome.InProgress && ticksUntilDecision-- <= 0)
+            {
+                trainedAgent.RequestDecision();
+                ticksUntilDecision = SelfPlayFighterAgent.DecisionPeriod - 1;
+            }
+            return;
+        }
+
         Vector2 direction = player.position - body.position;
         fighter.Face(direction);
 

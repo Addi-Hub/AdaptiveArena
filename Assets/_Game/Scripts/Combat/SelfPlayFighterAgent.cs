@@ -7,6 +7,7 @@ using UnityEngine;
 
 public sealed class SelfPlayFighterAgent : Agent
 {
+    public const int DecisionPeriod = 5;
     private const int ObservationSize = 25;
     private bool observeReach;
     private bool observeAim;

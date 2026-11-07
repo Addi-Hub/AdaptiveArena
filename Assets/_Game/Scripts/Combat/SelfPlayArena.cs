@@ -9,7 +9,6 @@ public sealed class SelfPlayArena : MonoBehaviour
     [SerializeField] private MeleeFighter second;
     [SerializeField] private SpriteRenderer floor;
 
-    private const int DecisionPeriod = 5;
     private const int MaxArenas = 16;
     private const float ArenaSpacing = 16f;
     private const float CloseStartDistance = 1.4f;
@@ -129,7 +128,7 @@ public sealed class SelfPlayArena : MonoBehaviour
         hasRequestedDecision = true;
         firstAgent.RequestDecision();
         secondAgent?.RequestDecision();
-        ticksUntilDecision = DecisionPeriod - 1;
+        ticksUntilDecision = SelfPlayFighterAgent.DecisionPeriod - 1;
     }
 
     private static void RewardFacing(MeleeFighter fighter, SelfPlayFighterAgent agent,

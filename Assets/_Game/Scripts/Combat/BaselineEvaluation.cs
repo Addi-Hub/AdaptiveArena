@@ -10,7 +10,6 @@ using UnityEngine;
 public sealed class BaselineEvaluation : MonoBehaviour
 {
     private const string CheckpointPath = "Assets/_Game/LocalEvaluation/ArenaDuel.onnx";
-    private const int DecisionPeriod = 5;
     [SerializeField] private MeleeFighter policyFighter;
     [SerializeField] private MeleeFighter baselineFighter;
     [SerializeField] private SpriteRenderer floor;
@@ -128,7 +127,7 @@ public sealed class BaselineEvaluation : MonoBehaviour
         }
 
         agent.RequestDecision();
-        ticksUntilDecision = DecisionPeriod - 1;
+        ticksUntilDecision = SelfPlayFighterAgent.DecisionPeriod - 1;
     }
 
     private void RecordAcceptedAttack(bool _) => acceptedAttacks++;

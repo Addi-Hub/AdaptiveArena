@@ -34,6 +34,11 @@ public sealed class BaselineEvaluation : MonoBehaviour
     private int wins;
     private int losses;
     private int draws;
+    private int acceptedAttacks;
+    private int rejectedAttacks;
+    private int dodgeCancellations;
+    private int knockoutCancellations;
+    private int roundEndCancellations;
     private int policyDamageDealt;
     private int baselineDamageDealt;
     private float policyY;
@@ -75,7 +80,8 @@ public sealed class BaselineEvaluation : MonoBehaviour
         outputPath = Path.Combine(directory, $"baseline-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-seed{seed}.csv");
         results = new StreamWriter(outputPath) { AutoFlush = true };
         results.WriteLine("match,pair,seed,checkpoint_sha256,policy_side,policy_start_y,baseline_start_y,outcome,"
-            + "policy_damage_dealt,baseline_damage_dealt,policy_hp_remaining,baseline_hp_remaining");
+            + "policy_damage_dealt,baseline_damage_dealt,policy_hp_remaining,baseline_hp_remaining,"
+            + "policy_attacks_accepted,policy_attacks_rejected,policy_cancelled_dodge,policy_cancelled_knockout,policy_cancelled_round_end");
         string swingPath = Path.Combine(directory, $"swings-{Path.GetFileName(outputPath)}");
         swings = new StreamWriter(swingPath);
         swings.WriteLine("match,checkpoint_sha256,policy_side,fighter,attack,distance,reach,aim_angle_deg,half_cone_deg,outcome,damage_dealt");
@@ -85,6 +91,9 @@ public sealed class BaselineEvaluation : MonoBehaviour
         agent = SelfPlayFighterAgent.Attach(policyFighter, baselineFighter, round, floor.bounds, 0, model);
         academy.AgentPreStep += RequestDecision;
         round.RoundEnded += RecordMatch;
+        policyFighter.AttackStarted += RecordAcceptedAttack;
+        policyFighter.AttackRejected += RecordRejectedAttack;
+        policyFighter.WindupCancelled += RecordCancellation;
         policyFighter.HitLanded += RecordPolicyDamage;
         baselineFighter.HitLanded += RecordBaselineDamage;
         policyFighter.SwingResolved += RecordPolicySwing;
@@ -115,6 +124,20 @@ public sealed class BaselineEvaluation : MonoBehaviour
         ticksUntilDecision = DecisionPeriod - 1;
     }
 
+    private void RecordAcceptedAttack(bool _) => acceptedAttacks++;
+
+    private void RecordRejectedAttack() => rejectedAttacks++;
+
+    private void RecordCancellation(MeleeFighter.WindupCancellation reason)
+    {
+        switch (reason)
+        {
+            case MeleeFighter.WindupCancellation.Dodge: dodgeCancellations++; break;
+            case MeleeFighter.WindupCancellation.Knockout: knockoutCancellations++; break;
+            case MeleeFighter.WindupCancellation.RoundEnd: roundEndCancellations++; break;
+        }
+    }
+
     private void RecordPolicyDamage(bool _, int damage) => policyDamageDealt += damage;
 
     private void RecordBaselineDamage(bool _, int damage) => baselineDamageDealt += damage;
@@ -136,6 +159,8 @@ public sealed class BaselineEvaluation : MonoBehaviour
 
     private void PrepareMatch()
     {
+        acceptedAttacks = rejectedAttacks = 0;
+        dodgeCancellations = knockoutCancellations = roundEndCancellations = 0;
         policyDamageDealt = 0;
         baselineDamageDealt = 0;
         if (matches % 2 == 0)
@@ -163,7 +188,7 @@ public sealed class BaselineEvaluation : MonoBehaviour
 
         string side = matches % 2 == 0 ? "left" : "right";
         results.WriteLine(FormattableString.Invariant(
-            $"{matches + 1},{matches / 2 + 1},{seed},{checkpointHash},{side},{policyY:F6},{baselineY:F6},{outcome},{policyDamageDealt},{baselineDamageDealt},{policyFighter.Health},{baselineFighter.Health}"));
+            $"{matches + 1},{matches / 2 + 1},{seed},{checkpointHash},{side},{policyY:F6},{baselineY:F6},{outcome},{policyDamageDealt},{baselineDamageDealt},{policyFighter.Health},{baselineFighter.Health},{acceptedAttacks},{rejectedAttacks},{dodgeCancellations},{knockoutCancellations},{roundEndCancellations}"));
         matches++;
         agent.EndEpisode();
 
@@ -190,6 +215,9 @@ public sealed class BaselineEvaluation : MonoBehaviour
 
         academy.AgentPreStep -= RequestDecision;
         round.RoundEnded -= RecordMatch;
+        policyFighter.AttackStarted -= RecordAcceptedAttack;
+        policyFighter.AttackRejected -= RecordRejectedAttack;
+        policyFighter.WindupCancelled -= RecordCancellation;
         policyFighter.HitLanded -= RecordPolicyDamage;
         baselineFighter.HitLanded -= RecordBaselineDamage;
         policyFighter.SwingResolved -= RecordPolicySwing;

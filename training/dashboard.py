@@ -111,6 +111,28 @@ def swing_summary(report, digest, completed_matches):
     return "\n".join(lines)
 
 
+def attack_summary(rows):
+    columns = ("policy_attacks_accepted", "policy_attacks_rejected",
+               "policy_cancelled_dodge", "policy_cancelled_knockout", "policy_cancelled_round_end")
+    if columns[0] not in rows[0]:
+        return "Rerun evaluation to collect attack choices and windup cancellations."
+
+    lines = ["Model attack choices by starting side"]
+    for side in ("left", "right"):
+        matches = [row for row in rows if row.get("policy_side") == side and row.get("outcome")]
+        if not matches:
+            continue
+        try:
+            accepted, rejected, dodge, knockout, round_end = (
+                sum(int(row[column]) for row in matches) for column in columns
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+        lines.append(f"{side.title()}: {accepted + rejected} chosen, {accepted} accepted, {rejected} rejected"
+                     f" | Cancelled: {dodge} dodge, {knockout} knockout, {round_end} round end")
+    return "\n".join(lines)
+
+
 def baseline_result(model):
     if not model.is_file():
         return "Baseline Bot: waiting for a model export"
@@ -140,7 +162,7 @@ def baseline_result(model):
                 f"Damage dealt {policy_damage:.1f} / {baseline_damage:.1f}   "
                 f"HP remaining {policy_hp:.1f} / {baseline_hp:.1f}")
         completed = {row["match"] for row in rows if row.get("match") and row.get("outcome")}
-        return "\n".join((summary, damage_summary, swing_summary(report, digest, completed)))
+        return "\n".join((summary, damage_summary, swing_summary(report, digest, completed), attack_summary(rows)))
     return "Baseline Bot: no report for the latest export"
 
 
@@ -175,7 +197,7 @@ class Dashboard:
 
     def build(self):
         self.window.title("Adaptive Arena | Training Dashboard")
-        self.window.geometry("900x810")
+        self.window.geometry("900x860")
         self.window.minsize(780, 700)
         body = ttk.Frame(self.window, padding=16)
         body.pack(fill="both", expand=True)

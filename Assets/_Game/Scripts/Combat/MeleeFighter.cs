@@ -62,6 +62,9 @@ public sealed class MeleeFighter : MonoBehaviour
     public float MaxAttackReach => Mathf.Max(light.reach, heavy.reach);
     public Vector2 FacingDirection { get; private set; } = Vector2.right;
     public event System.Action<bool> AttackStarted;
+    public enum WindupCancellation { Dodge, Knockout, RoundEnd }
+    public event System.Action AttackRejected;
+    public event System.Action<WindupCancellation> WindupCancelled;
     public event System.Action<bool, int> HitLanded;
     public event System.Action<bool, float, float, float, float, string, int> SwingResolved;
 
@@ -87,7 +90,10 @@ public sealed class MeleeFighter : MonoBehaviour
     public bool TryAttack(bool isHeavy, Vector2 direction)
     {
         if (!CanAct || direction.sqrMagnitude < 0.0001f)
+        {
+            AttackRejected?.Invoke();
             return false;
+        }
 
         activeAttack = isHeavy ? heavy : light;
         activeAttackIsHeavy = isHeavy;
@@ -105,7 +111,7 @@ public sealed class MeleeFighter : MonoBehaviour
             || direction.sqrMagnitude < 0.0001f)
             return false;
 
-        windupRemaining = 0f;
+        CancelWindup(WindupCancellation.Dodge);
         recoveryRemaining = 0f;
         healRemaining = 0f;
         effects.CancelAttack();
@@ -229,11 +235,19 @@ public sealed class MeleeFighter : MonoBehaviour
     public void EndRound()
     {
         roundEnded = true;
-        windupRemaining = 0f;
+        CancelWindup(WindupCancellation.RoundEnd);
         healRemaining = 0f;
         dodgeEndsAt = 0f;
         effects.CancelWindup();
         body.linearVelocity = Vector2.zero;
+    }
+
+    private void CancelWindup(WindupCancellation reason)
+    {
+        bool wasWindingUp = IsWindingUp;
+        windupRemaining = 0f;
+        if (wasWindingUp)
+            WindupCancelled?.Invoke(reason);
     }
 
     private int TakeDamage(int damage, Vector2 pushDirection)
@@ -249,7 +263,7 @@ public sealed class MeleeFighter : MonoBehaviour
         if (IsAlive)
             return damageDealt;
 
-        windupRemaining = 0f;
+        CancelWindup(WindupCancellation.Knockout);
         healRemaining = 0f;
         effects.CancelWindup();
         body.linearVelocity = Vector2.zero;

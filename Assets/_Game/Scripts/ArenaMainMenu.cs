@@ -190,6 +190,8 @@ internal static class ArenaTrainingPlayMode
     private const string PreviousScene = "AdaptiveArena.PreviousPlayScene";
     private static readonly string Request = System.IO.Path.Combine(
         System.IO.Path.GetDirectoryName(Application.dataPath), "Library", "ArenaTraining", "play-request");
+    private static readonly string StopRequest = System.IO.Path.Combine(
+        System.IO.Path.GetDirectoryName(Request), "stop-request");
     private static double nextPoll;
 
     static ArenaTrainingPlayMode()
@@ -204,12 +206,27 @@ internal static class ArenaTrainingPlayMode
         if (now < nextPoll)
             return;
         nextPoll = now + 0.25;
-        if (UnityEditor.EditorApplication.isCompiling || UnityEditor.EditorApplication.isUpdating ||
-            !System.IO.File.Exists(Request))
+        if (UnityEditor.EditorApplication.isCompiling || UnityEditor.EditorApplication.isUpdating)
             return;
 
         try
         {
+            if (System.IO.File.Exists(StopRequest))
+            {
+                bool recent = System.DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(StopRequest)
+                    <= System.TimeSpan.FromSeconds(60);
+                System.IO.File.Delete(StopRequest);
+                if (recent && UnityEditor.EditorApplication.isPlaying &&
+                    SceneManager.GetActiveScene().name == "SelfPlayArena")
+                {
+                    UnityEditor.EditorApplication.ExitPlaymode();
+                    return;
+                }
+            }
+
+            if (!System.IO.File.Exists(Request))
+                return;
+
             if (System.DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(Request) > System.TimeSpan.FromSeconds(60))
             {
                 System.IO.File.Delete(Request);

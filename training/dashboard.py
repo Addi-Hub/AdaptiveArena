@@ -18,6 +18,7 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 PLAY_REQUEST = ROOT / "Library" / "ArenaTraining" / "play-request"
+STOP_REQUEST = PLAY_REQUEST.with_name("stop-request")
 REWARDS = {
     "reward_win": ("Win", 1),
     "reward_loss": ("Loss", -1),
@@ -116,7 +117,7 @@ class Dashboard:
         self.status = tk.StringVar(value="Ready. Keep Unity open and start or resume a run.")
         self.progress_text = tk.StringVar(value="Select a run to view its stats.")
         self.baseline = tk.StringVar()
-        self.values = {tag: tk.StringVar(value="—") for tag in METRICS}
+        self.values = {tag: tk.StringVar(value="â€”") for tag in METRICS}
         self.build()
         self.refresh_runs()
         self.window.protocol("WM_DELETE_WINDOW", self.close)
@@ -166,6 +167,8 @@ class Dashboard:
         ttk.Button(controls, text="Refresh runs", command=self.refresh_runs).pack(side="left")
         self.resume_button = ttk.Button(controls, text="Resume selected run", command=lambda: self.launch(True))
         self.resume_button.pack(side="left", padx=8)
+        self.stop_button = ttk.Button(controls, text="Stop Training", command=self.stop, state="disabled")
+        self.stop_button.pack(side="left")
         stats = ttk.LabelFrame(body, text="Latest reported statistics", padding=10)
         stats.pack(fill="x")
         ttk.Label(stats, textvariable=self.progress_text).grid(row=0, column=0, columnspan=4, sticky="w")
@@ -219,6 +222,7 @@ class Dashboard:
                     raise ValueError("Rewards must be finite numbers between -1,000,000 and 1,000,000.")
             config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval, rewards)
             PLAY_REQUEST.unlink(missing_ok=True)
+            STOP_REQUEST.unlink(missing_ok=True)
             staging = ROOT / "Library" / "ArenaTraining"
             staging.mkdir(parents=True, exist_ok=True)
             path = staging / f"{run_id}.yaml"
@@ -227,6 +231,7 @@ class Dashboard:
             if python.name.lower() == "pythonw.exe":
                 python = python.with_name("python.exe")
             command = [str(python), "-u", "-m", "mlagents.trainers.learn", str(path), f"--run-id={run_id}"]
+            command.append("--max-lifetime-restarts=0")
             if resume:
                 command.append("--resume")
             self.process = subprocess.Popen(
@@ -241,7 +246,7 @@ class Dashboard:
         self.select_run()
         self.run_picker.configure(state="disabled")
         self.start_button.configure(state="disabled")
-        self.status.set(f"Starting {run_id}…")
+        self.status.set(f"Starting {run_id}â€¦")
         self.append_log(f"\n--- {run_id} ---\n")
         threading.Thread(target=self.read_output, args=(self.process.stdout,), daemon=True).start()
 
@@ -258,6 +263,15 @@ class Dashboard:
         self.log.see("end")
         self.log.configure(state="disabled")
 
+    def stop(self):
+        try:
+            STOP_REQUEST.touch()
+        except OSError as error:
+            messagebox.showerror("Could not stop training", str(error), parent=self.window)
+            return
+        self.stop_button.configure(state="disabled")
+        self.status.set("Stopping training. Waiting for the trainer to save and exit…")
+
     def poll(self):
         while not self.lines.empty():
             line = self.lines.get_nowait()
@@ -268,12 +282,13 @@ class Dashboard:
                         temporary = PLAY_REQUEST.with_suffix(".tmp")
                         temporary.write_text("SelfPlayArena", encoding="utf-8")
                         temporary.replace(PLAY_REQUEST)
-                        self.status.set("Trainer ready. Waiting for Unity to start SelfPlayArena…")
+                        self.status.set("Trainer ready. Waiting for Unity to start SelfPlayArenaâ€¦")
                     except OSError as error:
                         self.status.set("Could not signal Unity. Open SelfPlayArena and press Play.")
                         self.append_log(f"Unity launch request failed: {error}\n")
                 elif "Connected to Unity environment" in line:
-                    self.status.set("Training live. Stop Unity Play Mode to end the session.")
+                    self.status.set("Training live.")
+                    self.stop_button.configure(state="normal")
         if self.process is not None:
             code = self.process.poll()
             if code is not None:
@@ -284,6 +299,7 @@ class Dashboard:
                 except OSError as error:
                     self.append_log(f"Could not remove Unity launch request: {error}\n")
                 self.process = None
+                self.stop_button.configure(state="disabled")
                 self.run_picker.configure(state="readonly")
                 self.start_button.configure(state="normal")
                 self.refresh_runs()
@@ -293,7 +309,7 @@ class Dashboard:
         try:
             self.update_stats()
         except (OSError, KeyError, ValueError, TypeError, yaml.YAMLError):
-            self.progress_text.set("Waiting for readable trainer statistics…")
+            self.progress_text.set("Waiting for readable trainer statisticsâ€¦")
         self.window.after(2000, self.refresh_stats)
 
     def update_stats(self):
@@ -313,7 +329,7 @@ class Dashboard:
                         latest[tag] = points[-1]
         for tag, value in self.values.items():
             point = latest.get(tag)
-            value.set("—" if point is None else (f"{point.value:.1%}" if tag.endswith("rate") else f"{point.value:.3f}"))
+            value.set("â€”" if point is None else (f"{point.value:.1%}" if tag.endswith("rate") else f"{point.value:.3f}"))
         config = folder / "configuration.yaml"
         target = read_config(config)["behaviors"]["ArenaDuel"]["max_steps"] if config.is_file() else 0
         step = max((point.step for point in latest.values()), default=0)
@@ -330,7 +346,7 @@ class Dashboard:
 
     def close(self):
         if self.process is not None and self.process.poll() is None:
-            messagebox.showinfo("Trainer running", "Stop Unity Play Mode or wait for the trainer to exit.", parent=self.window)
+            messagebox.showinfo("Trainer running", "Use Stop Training or wait for the trainer to exit.", parent=self.window)
             return
         self.window.destroy()
 

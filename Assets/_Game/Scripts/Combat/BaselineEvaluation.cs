@@ -36,6 +36,9 @@ public sealed class BaselineEvaluation : MonoBehaviour
     private int draws;
     private int acceptedAttacks;
     private int rejectedAttacks;
+    private static readonly MeleeFighter.AttackRejection[] AttackRejectionReasons =
+        (MeleeFighter.AttackRejection[])Enum.GetValues(typeof(MeleeFighter.AttackRejection));
+    private readonly int[] rejectionsByReason = new int[AttackRejectionReasons.Length];
     private int dodgeCancellations;
     private int knockoutCancellations;
     private int roundEndCancellations;
@@ -81,7 +84,8 @@ public sealed class BaselineEvaluation : MonoBehaviour
         results = new StreamWriter(outputPath) { AutoFlush = true };
         results.WriteLine("match,pair,seed,checkpoint_sha256,policy_side,policy_start_y,baseline_start_y,outcome,"
             + "policy_damage_dealt,baseline_damage_dealt,policy_hp_remaining,baseline_hp_remaining,"
-            + "policy_attacks_accepted,policy_attacks_rejected,policy_cancelled_dodge,policy_cancelled_knockout,policy_cancelled_round_end");
+            + "policy_attacks_accepted,policy_attacks_rejected,policy_cancelled_dodge,policy_cancelled_knockout,policy_cancelled_round_end,"
+            + string.Join(",", Array.ConvertAll(AttackRejectionReasons, reason => $"policy_rejected_{reason.ToString().ToLowerInvariant()}")));
         string swingPath = Path.Combine(directory, $"swings-{Path.GetFileName(outputPath)}");
         swings = new StreamWriter(swingPath);
         swings.WriteLine("match,checkpoint_sha256,policy_side,fighter,attack,distance,reach,aim_angle_deg,half_cone_deg,outcome,damage_dealt");
@@ -126,7 +130,11 @@ public sealed class BaselineEvaluation : MonoBehaviour
 
     private void RecordAcceptedAttack(bool _) => acceptedAttacks++;
 
-    private void RecordRejectedAttack() => rejectedAttacks++;
+    private void RecordRejectedAttack(MeleeFighter.AttackRejection reason)
+    {
+        rejectedAttacks++;
+        rejectionsByReason[(int)reason]++;
+    }
 
     private void RecordCancellation(MeleeFighter.WindupCancellation reason)
     {
@@ -160,6 +168,7 @@ public sealed class BaselineEvaluation : MonoBehaviour
     private void PrepareMatch()
     {
         acceptedAttacks = rejectedAttacks = 0;
+        Array.Clear(rejectionsByReason, 0, rejectionsByReason.Length);
         dodgeCancellations = knockoutCancellations = roundEndCancellations = 0;
         policyDamageDealt = 0;
         baselineDamageDealt = 0;
@@ -188,7 +197,7 @@ public sealed class BaselineEvaluation : MonoBehaviour
 
         string side = matches % 2 == 0 ? "left" : "right";
         results.WriteLine(FormattableString.Invariant(
-            $"{matches + 1},{matches / 2 + 1},{seed},{checkpointHash},{side},{policyY:F6},{baselineY:F6},{outcome},{policyDamageDealt},{baselineDamageDealt},{policyFighter.Health},{baselineFighter.Health},{acceptedAttacks},{rejectedAttacks},{dodgeCancellations},{knockoutCancellations},{roundEndCancellations}"));
+            $"{matches + 1},{matches / 2 + 1},{seed},{checkpointHash},{side},{policyY:F6},{baselineY:F6},{outcome},{policyDamageDealt},{baselineDamageDealt},{policyFighter.Health},{baselineFighter.Health},{acceptedAttacks},{rejectedAttacks},{dodgeCancellations},{knockoutCancellations},{roundEndCancellations},{string.Join(",", rejectionsByReason)}"));
         matches++;
         agent.EndEpisode();
 

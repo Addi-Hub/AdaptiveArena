@@ -125,6 +125,10 @@ def attack_summary(rows):
     if columns[0] not in rows[0]:
         return "Rerun evaluation to collect attack choices and windup cancellations."
 
+    reasons = (("windup", "windup"), ("recovery", "recovery"), ("dodging", "dodging"),
+               ("healing", "healing"), ("roundended", "round ended"),
+               ("fighterdefeated", "fighter defeated"), ("invaliddirection", "invalid direction"))
+    has_reasons = "policy_rejected_windup" in rows[0]
     lines = ["Model attack choices by starting side"]
     for side in ("left", "right"):
         matches = [row for row in rows if row.get("policy_side") == side and row.get("outcome")]
@@ -138,6 +142,15 @@ def attack_summary(rows):
             continue
         lines.append(f"{side.title()}: {accepted + rejected} chosen, {accepted} accepted, {rejected} rejected"
                      f" | Cancelled: {dodge} dodge, {knockout} knockout, {round_end} round end")
+        if has_reasons:
+            breakdown = []
+            for key, label in reasons:
+                count = sum(int(row.get(f"policy_rejected_{key}") or 0) for row in matches)
+                if count:
+                    breakdown.append(f"{count} {label}")
+            lines.append("  Rejected by reason: " + (", ".join(breakdown) or "none"))
+    if not has_reasons:
+        lines.append("Rerun evaluation to collect attack rejection reasons.")
     return "\n".join(lines)
 
 

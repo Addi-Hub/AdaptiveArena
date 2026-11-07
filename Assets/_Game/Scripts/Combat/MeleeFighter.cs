@@ -63,7 +63,8 @@ public sealed class MeleeFighter : MonoBehaviour
     public Vector2 FacingDirection { get; private set; } = Vector2.right;
     public event System.Action<bool> AttackStarted;
     public enum WindupCancellation { Dodge, Knockout, RoundEnd }
-    public event System.Action AttackRejected;
+    public enum AttackRejection { Windup, Recovery, Dodging, Healing, RoundEnded, FighterDefeated, InvalidDirection }
+    public event System.Action<AttackRejection> AttackRejected;
     public event System.Action<WindupCancellation> WindupCancelled;
     public event System.Action<bool, int> HitLanded;
     public event System.Action<bool, float, float, float, float, string, int> SwingResolved;
@@ -91,7 +92,8 @@ public sealed class MeleeFighter : MonoBehaviour
     {
         if (!CanAct || direction.sqrMagnitude < 0.0001f)
         {
-            AttackRejected?.Invoke();
+            if (AttackRejected != null)
+                AttackRejected.Invoke(GetAttackRejection());
             return false;
         }
 
@@ -103,6 +105,18 @@ public sealed class MeleeFighter : MonoBehaviour
             activeAttack.windup, isHeavy);
         AttackStarted?.Invoke(isHeavy);
         return true;
+    }
+
+    private AttackRejection GetAttackRejection()
+    {
+        // Report the first blocking condition, so each rejected choice is counted once.
+        if (roundEnded) return AttackRejection.RoundEnded;
+        if (!IsAlive || !opponent.IsAlive) return AttackRejection.FighterDefeated;
+        if (IsWindingUp) return AttackRejection.Windup;
+        if (recoveryRemaining > 0f) return AttackRejection.Recovery;
+        if (IsDodging) return AttackRejection.Dodging;
+        if (IsHealing) return AttackRejection.Healing;
+        return AttackRejection.InvalidDirection;
     }
 
     public bool TryDodge(Vector2 direction)

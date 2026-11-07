@@ -5,6 +5,7 @@ public sealed class TrainingTarget : MonoBehaviour
 {
     [SerializeField] private Rigidbody2D player;
     [SerializeField, Min(0.1f)] private float attackInterval = 3f;
+    [SerializeField, Min(0f)] private float moveSpeed = 3.5f;
 
     private MeleeFighter fighter;
     private Rigidbody2D body;
@@ -18,12 +19,18 @@ public sealed class TrainingTarget : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (Time.fixedTime < nextAttackAt)
-            return;
-
         Vector2 direction = player.position - body.position;
-        if (direction.sqrMagnitude <= fighter.HeavyReach * fighter.HeavyReach
+        float stopDistance = fighter.HeavyReach * 0.85f;
+        bool shouldApproach = !fighter.IsWindingUp && direction.sqrMagnitude > stopDistance * stopDistance;
+        body.linearVelocity = fighter.GetMovementVelocity(
+            shouldApproach ? direction.normalized : Vector2.zero, moveSpeed);
+
+        if (Time.fixedTime >= nextAttackAt
+            && direction.sqrMagnitude <= fighter.HeavyReach * fighter.HeavyReach
             && fighter.TryAttack(isHeavy: true, direction: direction))
+        {
+            body.linearVelocity = Vector2.zero;
             nextAttackAt = Time.fixedTime + attackInterval;
+        }
     }
 }

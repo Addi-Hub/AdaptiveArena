@@ -12,7 +12,7 @@ public sealed class ArenaMainMenu : MonoBehaviour
     private static readonly Color Accent = new Color(0.30f, 0.88f, 0.76f);
     private static readonly Color Muted = new Color(0.72f, 0.78f, 0.84f);
 
-    public static bool UseDuelist { get; private set; }
+    public static bool UseBaselineBot { get; private set; }
 
     private Page page;
     private GUIStyle heading;
@@ -20,7 +20,7 @@ public sealed class ArenaMainMenu : MonoBehaviour
     private GUIStyle button;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetSelection() => UseDuelist = false;
+    private static void ResetSelection() => UseBaselineBot = false;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void LoadVolume() => AudioListener.volume = PlayerPrefs.GetFloat(VolumeKey, 1f);
@@ -83,11 +83,11 @@ public sealed class ArenaMainMenu : MonoBehaviour
         Title("CHOOSE A BOT", "SCRIPTED OPPONENTS");
         if (Button(209, "Sparring Partner"))
             StartDuel(false);
-        GUI.Label(new Rect(220, 263, 460, 32), "Closes slowly and favors heavy swings.", copy);
+        GUI.Label(new Rect(220, 263, 460, 32), "Practices heavy swings with long pauses.", copy);
 
-        if (Button(314, "Duelist"))
+        if (Button(314, "Baseline Bot"))
             StartDuel(true);
-        GUI.Label(new Rect(220, 368, 460, 32), "Closes faster and mixes light and heavy swings.", copy);
+        GUI.Label(new Rect(200, 368, 500, 32), "Mixes light and heavy swings, dodges, and heals.", copy);
     }
 
     private void DrawTraining()
@@ -120,9 +120,9 @@ public sealed class ArenaMainMenu : MonoBehaviour
 
     private bool Button(float top, string label) => GUI.Button(new Rect(265, top, 370, 48), label, button);
 
-    private static void StartDuel(bool duelist)
+    private static void StartDuel(bool baselineBot)
     {
-        UseDuelist = duelist;
+        UseBaselineBot = baselineBot;
         SceneManager.LoadScene("Arena");
     }
 

@@ -7,7 +7,7 @@ Adaptive Arena is a planned top-down 2D Unity duel where you fight an opponent t
 1. Clone the repository. Set up Git LFS with `git lfs install` before cloning if you will work with binary assets tracked through the repository's LFS rules.
 2. Install Unity **6000.3.9f1** via Unity Hub, as recorded in [ProjectVersion.txt](ProjectSettings/ProjectVersion.txt).
 3. Add the repository root to Unity Hub and open it. Allow Unity to restore the packages in [the manifest](Packages/manifest.json).
-4. Open `Assets/_Game/Scenes/MainMenu.unity`, enter Play Mode, and select **Play vs Bot**. Choose Sparring Partner or Duelist. Move with WASD and aim with the mouse. Use left click for a light swing, right click for a heavy swing, Space to dodge, E to heal, R to restart, and Esc to return to the menu. A knockout ends the round, and the round is a draw if both fighters are still standing after 60 seconds.
+4. Open `Assets/_Game/Scenes/MainMenu.unity`, enter Play Mode, and select **Play vs Bot**. Choose Sparring Partner or Baseline Bot. Move with WASD and aim with the mouse. Use left click for a light swing, right click for a heavy swing, Space to dodge, E to heal, R to restart, and Esc to return to the menu. A knockout ends the round, and the round is a draw if both fighters are still standing after 60 seconds.
 
 The Training screen currently shows the offline state. ML-Agents and training telemetry are the next integration step.
 

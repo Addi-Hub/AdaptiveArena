@@ -29,8 +29,9 @@ public sealed class MeleeFighter : MonoBehaviour
 
     private const int HealAmount = 50;
     private const int MaxHealCharges = 2;
-    private const float HealDuration = 2f;
+    private const float HealDuration = 1.25f;
     private const float HealSpeedMultiplier = 0.5f;
+    private const float MoveSpeed = 5f;
     private const float KnockbackDuration = 0.18f;
 
     private Rigidbody2D body;
@@ -55,6 +56,7 @@ public sealed class MeleeFighter : MonoBehaviour
     public bool IsHealing => healRemaining > 0f;
     public bool IsDodgeReady => !roundEnded && Time.time >= dodgeReadyAt;
     public float GetAttackReach(bool isHeavy) => isHeavy ? heavy.reach : light.reach;
+    public float MaxAttackReach => Mathf.Max(light.reach, heavy.reach);
     public Vector2 FacingDirection { get; private set; } = Vector2.right;
 
     public void Face(Vector2 direction)
@@ -114,7 +116,13 @@ public sealed class MeleeFighter : MonoBehaviour
         return true;
     }
 
-    public Vector2 GetMovementVelocity(Vector2 input, float moveSpeed)
+    public bool IsAboutToHit(Vector2 position, float reactionWindow)
+    {
+        return IsWindingUp && windupRemaining <= reactionWindow
+            && IsInsideAttack(position - body.position);
+    }
+
+    public Vector2 GetMovementVelocity(Vector2 input)
     {
         if (Time.time < knockbackEndsAt)
             return knockbackVelocity * Mathf.Clamp01((knockbackEndsAt - Time.time) / KnockbackDuration);
@@ -123,7 +131,7 @@ public sealed class MeleeFighter : MonoBehaviour
         if (IsDodging)
             return dodgeDirection * dodgeSpeed;
 
-        float speed = IsHealing ? moveSpeed * HealSpeedMultiplier : moveSpeed;
+        float speed = IsHealing ? MoveSpeed * HealSpeedMultiplier : MoveSpeed;
         return Vector2.ClampMagnitude(input, 1f) * speed;
     }
 
@@ -155,12 +163,17 @@ public sealed class MeleeFighter : MonoBehaviour
         effects.Swing();
         recoveryRemaining = activeAttack.recovery;
         Vector2 offset = opponent.body.position - body.position;
-        if (opponent.IsAlive && offset.sqrMagnitude <= activeAttack.reach * activeAttack.reach
-            && Vector2.Angle(FacingDirection, offset) <= activeAttack.coneAngle * 0.5f)
+        if (opponent.IsAlive && IsInsideAttack(offset))
         {
             Vector2 pushDirection = offset.sqrMagnitude > 0.0001f ? offset.normalized : FacingDirection;
             opponent.TakeDamage(activeAttack.damage, pushDirection);
         }
+    }
+
+    private bool IsInsideAttack(Vector2 offset)
+    {
+        return offset.sqrMagnitude <= activeAttack.reach * activeAttack.reach
+            && Vector2.Angle(FacingDirection, offset) <= activeAttack.coneAngle * 0.5f;
     }
 
     public void EndRound()

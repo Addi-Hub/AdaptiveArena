@@ -38,10 +38,12 @@ Start a fresh run using the same Conda environment. The hit-reward configuration
 
 ```powershell
 $conda = "$env:USERPROFILE\anaconda3\Scripts\conda.exe"
-& $conda run --no-capture-output -n adaptive-arena mlagents-learn training\self-play-hit-rewards.yaml --run-id=arena-hits-01
+& $conda run --no-capture-output -n adaptive-arena mlagents-learn training\self-play-hit-rewards.yaml --run-id=arena-draw-penalty-01
 ```
 
-Use `SelfPlayArena.unity` and press **Play** when the trainer prompts you. A landed light or heavy hit gives the attacker +1 and the defender −1. Knockouts add +100 to the winner and −100 to the loser. Draws add zero and keep any hit rewards. The TensorBoard `Arena/` metrics report light and heavy attempts, hits per round, and knockout rate. A swing counts as an attempt when its windup starts, even if the fighter cancels it.
+Use `SelfPlayArena.unity` and press **Play** when the trainer prompts you. A landed light or heavy hit gives the attacker +1 and the defender −1. A knockout adds +200 to the winner and −200 to the loser. A draw adds −100 to each fighter. Terminal rewards are added to the hit rewards accumulated during the round.
+
+TensorBoard reports light and heavy attempts, hits per round, and knockout rate under `Arena/`. A swing counts as an attempt when its windup starts, even if the fighter cancels it. ML-Agents infers the Elo outcome from the sign of the final reward, so a penalized draw can register as a loss in Elo. Use the knockout rate and baseline evaluation results to compare this run.
 
 ## Evaluate a frozen checkpoint
 

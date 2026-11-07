@@ -9,7 +9,8 @@ public sealed class SelfPlayArena : MonoBehaviour
     [SerializeField] private SpriteRenderer floor;
 
     private const int DecisionPeriod = 5;
-    private const float KnockoutReward = 100f;
+    private const float KnockoutReward = 200f;
+    private const float DrawReward = -100f;
     private const float HitReward = 1f;
     private Academy academy;
     private ArenaRound round;
@@ -77,11 +78,11 @@ public sealed class SelfPlayArena : MonoBehaviour
 
     private void FinishRound(ArenaRound.Outcome outcome)
     {
-        float reward = outcome switch
+        (float firstReward, float secondReward) = outcome switch
         {
-            ArenaRound.Outcome.PlayerWin => KnockoutReward,
-            ArenaRound.Outcome.OpponentWin => -KnockoutReward,
-            _ => 0f
+            ArenaRound.Outcome.PlayerWin => (KnockoutReward, -KnockoutReward),
+            ArenaRound.Outcome.OpponentWin => (-KnockoutReward, KnockoutReward),
+            _ => (DrawReward, DrawReward)
         };
         var stats = academy.StatsRecorder;
         stats.Add("Arena/Light attempts per round", lightAttempts);
@@ -89,8 +90,8 @@ public sealed class SelfPlayArena : MonoBehaviour
         stats.Add("Arena/Light hits per round", lightHits);
         stats.Add("Arena/Heavy hits per round", heavyHits);
         stats.Add("Arena/Knockout rate", outcome == ArenaRound.Outcome.Timeout ? 0f : 1f);
-        firstAgent.AddReward(reward);
-        secondAgent.AddReward(-reward);
+        firstAgent.AddReward(firstReward);
+        secondAgent.AddReward(secondReward);
         firstAgent.EndEpisode();
         secondAgent.EndEpisode();
         ResetRound();

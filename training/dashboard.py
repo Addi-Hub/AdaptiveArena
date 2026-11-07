@@ -96,8 +96,21 @@ def baseline_result(model):
         outcomes = [row.get("outcome") for row in rows]
         wins = outcomes.count("PlayerWin")
         losses = outcomes.count("OpponentWin")
-        return (f"Baseline Bot: {wins} W / {losses} L / {len(rows) - wins - losses} D"
+        summary = (f"Baseline Bot: {wins} W / {losses} L / {len(rows) - wins - losses} D"
                 f" ({wins / len(rows):.0%} wins over {len(rows)} recorded matches)")
+        if "policy_damage_dealt" not in rows[0]:
+            return summary + "\nRerun evaluation to collect damage and remaining HP."
+        columns = ("policy_damage_dealt", "baseline_damage_dealt",
+                   "policy_hp_remaining", "baseline_hp_remaining")
+        try:
+            policy_damage, baseline_damage, policy_hp, baseline_hp = (
+                sum(int(row[column]) for row in rows) / len(rows) for column in columns
+            )
+        except (KeyError, TypeError, ValueError):
+            return summary
+        return (summary + f"\nAverage per match (model / baseline)   "
+                f"Damage dealt {policy_damage:.1f} / {baseline_damage:.1f}   "
+                f"HP remaining {policy_hp:.1f} / {baseline_hp:.1f}")
     return "Baseline Bot: no report for the latest export"
 
 

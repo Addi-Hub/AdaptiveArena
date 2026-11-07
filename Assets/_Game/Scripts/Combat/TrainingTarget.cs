@@ -29,6 +29,13 @@ public sealed class TrainingTarget : MonoBehaviour
     private void OnEnable() => round.RoundReset += ResetTactics;
     private void OnDisable() => round.RoundReset -= ResetTactics;
 
+    public void EnableSparring()
+    {
+        baselineBot = false;
+        ResetTactics();
+        enabled = true;
+    }
+
     private void ResetTactics()
     {
         nextAttackAt = 0f;

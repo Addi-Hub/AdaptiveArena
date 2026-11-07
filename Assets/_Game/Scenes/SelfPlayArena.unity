@@ -740,6 +740,7 @@ GameObject:
   - component: {fileID: 1203}
   - component: {fileID: 1204}
   - component: {fileID: 1206}
+  - component: {fileID: 1207}
   m_Layer: 0
   m_Name: Team 1
   m_TagString: Untagged
@@ -845,6 +846,17 @@ MonoBehaviour:
   first: {fileID: 1106}
   second: {fileID: 1206}
   floor: {fileID: 1012}
+--- !u!114 &1207
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_GameObject: {fileID: 1200}
+  m_Enabled: 0
+  m_Script: {fileID: 11500000, guid: b108c54d306745c9a10588ef76a48265, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  player: {fileID: 1103}
+  attackInterval: 3
+  forceBaseline: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

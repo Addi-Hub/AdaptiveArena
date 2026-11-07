@@ -45,6 +45,7 @@ METRICS = {
     "Arena/Normal starts/Hits per round": "Normal starts / hits",
     "Arena/Close starts/Hits per round": "Close starts / hits",
     "Arena/Knockout rate": "Knockouts",
+    "Arena/Sparring win rate": "Sparring win rate",
     "Arena/Facing reward per fighter per round": "Facing bonus / fighter / round",
 }
 
@@ -63,7 +64,7 @@ def saved_step(folder):
     return max(steps, default=0)
 
 
-def run_config(folder, resume, starts, target, seed, rate, interval, rewards=None, arenas=1, swap_sides=False, observe_reach=False, observe_aim=False, observe_attack_ready=False):
+def run_config(folder, resume, starts, target, seed, rate, interval, rewards=None, arenas=1, swap_sides=False, observe_reach=False, observe_aim=False, observe_attack_ready=False, sparring=False):
     if resume:
         config = read_config(folder / "configuration.yaml")
         step = saved_step(folder)
@@ -81,6 +82,8 @@ def run_config(folder, resume, starts, target, seed, rate, interval, rewards=Non
         behavior = config["behaviors"]["ArenaDuel"]
         behavior["hyperparameters"]["learning_rate"] = rate
         behavior["checkpoint_interval"] = interval
+        if sparring:
+            behavior.pop("self_play", None)
         if observe_attack_ready:
             config.setdefault("environment_parameters", {})["observe_attack_ready"] = 1.0
         if observe_aim:
@@ -204,6 +207,7 @@ class Dashboard:
         self.name = tk.StringVar(value="arena-damage-500k-01")
         self.starts = tk.StringVar(value="normal")
         self.swap_sides = tk.BooleanVar()
+        self.sparring = tk.BooleanVar()
         self.observe_reach = tk.BooleanVar()
         self.observe_aim = tk.BooleanVar()
         self.observe_attack_ready = tk.BooleanVar()
@@ -255,6 +259,8 @@ class Dashboard:
                         variable=self.observe_aim).grid(row=8, column=0, columnspan=3, sticky="w")
         ttk.Checkbutton(settings, text="Observe attack readiness (new runs)",
                         variable=self.observe_attack_ready).grid(row=9, column=0, columnspan=3, sticky="w")
+        ttk.Checkbutton(settings, text="Train against Sparring Bot (new runs)",
+                        variable=self.sparring).grid(row=10, column=0, columnspan=3, sticky="w")
         rewards = ttk.LabelFrame(body, text="Rewards for each fighter (signed values)", padding=10)
         rewards.pack(fill="x", pady=(8, 0))
         reward_columns = 4
@@ -384,7 +390,7 @@ class Dashboard:
                     raise ValueError("Rewards must be finite numbers between -1,000,000 and 1,000,000.")
             config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval,
                                 rewards, arenas, self.swap_sides.get(), self.observe_reach.get(),
-                                self.observe_aim.get(), self.observe_attack_ready.get())
+                                self.observe_aim.get(), self.observe_attack_ready.get(), self.sparring.get())
             # The exported run configuration serializes constant parameters as curricula.
             observations = []
             parameters = config.get("environment_parameters") or {}
@@ -395,6 +401,8 @@ class Dashboard:
                     value = value["curriculum"][0]["value"]["sampler_parameters"]["value"]
                 if value > 0.5:
                     observations.append(label)
+            if not config["behaviors"]["ArenaDuel"].get("self_play"):
+                observations.append("sparring")
             PLAY_REQUEST.unlink(missing_ok=True)
             STOP_REQUEST.unlink(missing_ok=True)
             staging = ROOT / "Library" / "ArenaTraining"

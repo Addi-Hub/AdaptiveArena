@@ -73,18 +73,23 @@ public sealed class SelfPlayArena : MonoBehaviour
             return;
         }
 
+        bool sparring = false;
         bool observeReach = false;
         bool observeAim = false;
         bool observeAttackReady = false;
 #if UNITY_EDITOR
+        sparring = ArenaTrainingPlayMode.UseSparringOpponent;
         observeReach = ArenaTrainingPlayMode.ObserveReach;
         observeAim = ArenaTrainingPlayMode.ObserveAim;
         observeAttackReady = ArenaTrainingPlayMode.ObserveAttackReady;
 #endif
         firstAgent = SelfPlayFighterAgent.Attach(first, second, round, floor.bounds, 0,
             observeReach: observeReach, observeAim: observeAim, observeAttackReady: observeAttackReady);
-        secondAgent = SelfPlayFighterAgent.Attach(second, first, round, floor.bounds, 1,
-            observeReach: observeReach, observeAim: observeAim, observeAttackReady: observeAttackReady);
+        if (sparring)
+            second.GetComponent<TrainingTarget>().EnableSparring();
+        else
+            secondAgent = SelfPlayFighterAgent.Attach(second, first, round, floor.bounds, 1,
+                observeReach: observeReach, observeAim: observeAim, observeAttackReady: observeAttackReady);
         firstBody = first.GetComponent<Rigidbody2D>();
         secondBody = second.GetComponent<Rigidbody2D>();
         academy.AgentPreStep += RequestDecisions;
@@ -113,12 +118,13 @@ public sealed class SelfPlayArena : MonoBehaviour
         {
             Vector2 offset = secondBody.position - firstBody.position;
             RewardFacing(first, firstAgent, offset, facingReward, ref firstFacingReward);
-            RewardFacing(second, secondAgent, -offset, facingReward, ref secondFacingReward);
+            if (secondAgent != null)
+                RewardFacing(second, secondAgent, -offset, facingReward, ref secondFacingReward);
         }
 
         hasRequestedDecision = true;
         firstAgent.RequestDecision();
-        secondAgent.RequestDecision();
+        secondAgent?.RequestDecision();
         ticksUntilDecision = DecisionPeriod - 1;
     }
 
@@ -151,7 +157,7 @@ public sealed class SelfPlayArena : MonoBehaviour
     private void RewardHeal(SelfPlayFighterAgent agent, int restored)
     {
         float reward = academy.EnvironmentParameters.GetWithDefault("reward_hp_healed", 0f);
-        agent.AddReward(restored * reward);
+        agent?.AddReward(restored * reward);
     }
 
     private void RewardFirstDodge() => RewardDodge(firstAgent);
@@ -159,7 +165,7 @@ public sealed class SelfPlayArena : MonoBehaviour
 
     private void RewardDodge(SelfPlayFighterAgent agent)
     {
-        agent.AddReward(academy.EnvironmentParameters.GetWithDefault("reward_attack_dodged", 0f));
+        agent?.AddReward(academy.EnvironmentParameters.GetWithDefault("reward_attack_dodged", 0f));
     }
 
     private void RewardHit(bool isHeavy, int damage, SelfPlayFighterAgent attacker, SelfPlayFighterAgent defender)
@@ -168,8 +174,8 @@ public sealed class SelfPlayArena : MonoBehaviour
         else lightHits++;
 
         var rewards = academy.EnvironmentParameters;
-        attacker.AddReward(damage * rewards.GetWithDefault("reward_damage_dealt", 0.003f));
-        defender.AddReward(damage * rewards.GetWithDefault("reward_damage_taken", -0.003f));
+        attacker?.AddReward(damage * rewards.GetWithDefault("reward_damage_dealt", 0.003f));
+        defender?.AddReward(damage * rewards.GetWithDefault("reward_damage_taken", -0.003f));
     }
 
     private void FinishRound(ArenaRound.Outcome outcome)
@@ -185,8 +191,10 @@ public sealed class SelfPlayArena : MonoBehaviour
             _ => (draw, draw)
         };
         var stats = academy.StatsRecorder;
+        if (secondAgent == null)
+            stats.Add("Arena/Sparring win rate", outcome == ArenaRound.Outcome.PlayerWin ? 1f : 0f);
         if (rewards.GetWithDefault("reward_face_opponent", 0f) > 0f)
-            stats.Add("Arena/Facing reward per fighter per round", (firstFacingReward + secondFacingReward) * 0.5f);
+            stats.Add("Arena/Facing reward per fighter per round", secondAgent == null ? firstFacingReward : (firstFacingReward + secondFacingReward) * 0.5f);
         stats.Add("Arena/Light attempts per round", lightAttempts);
         stats.Add("Arena/Heavy attempts per round", heavyAttempts);
         stats.Add("Arena/Light hits per round", lightHits);
@@ -197,9 +205,9 @@ public sealed class SelfPlayArena : MonoBehaviour
         stats.Add($"Arena/{start}/Hits per round", lightHits + heavyHits);
         stats.Add($"Arena/{start}/Knockout rate", knockout);
         firstAgent.AddReward(firstReward);
-        secondAgent.AddReward(secondReward);
+        secondAgent?.AddReward(secondReward);
         firstAgent.EndEpisode();
-        secondAgent.EndEpisode();
+        secondAgent?.EndEpisode();
         completedRounds++;
         ResetRound();
     }

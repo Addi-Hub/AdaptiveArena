@@ -27,10 +27,21 @@ Use Unity 6000.3.9f1 and Python 3.10.12. The Unity project requests ML-Agents 4.
    .\.venv\Scripts\mlagents-learn.exe training\self-play-smoke.yaml --run-id=arena-smoke-01
    ```
 
-3. When the trainer asks you to start the environment, press **Play** in Unity. Both fighters use the same behavior on different teams. Each knockout or 30-second timeout ends both episodes and resets the arena. Knockouts award +1 to the winner and −1 to the loser. Draws award zero.
+3. When the trainer asks you to start the environment, press **Play** in Unity. Both fighters use the same behavior on different teams. Each knockout or 30-second timeout ends both episodes and resets the arena.
 4. Check the console for trainer progress and the run folder `results/arena-smoke-01/` for exported `.onnx` files. Use a new run ID for a fresh smoke test.
 
 The 10,000-step smoke run checks wiring and checkpoint creation. Use the separate baseline evaluation to judge policy strength.
+
+## Train with hit rewards
+
+Start a fresh run using the same Conda environment. The hit-reward configuration runs for 50,000 steps with checkpoints every 10,000 steps.
+
+```powershell
+$conda = "$env:USERPROFILE\anaconda3\Scripts\conda.exe"
+& $conda run --no-capture-output -n adaptive-arena mlagents-learn training\self-play-hit-rewards.yaml --run-id=arena-hits-01
+```
+
+Use `SelfPlayArena.unity` and press **Play** when the trainer prompts you. A landed light or heavy hit gives the attacker +1 and the defender −1. Knockouts add +100 to the winner and −100 to the loser. Draws add zero and keep any hit rewards. The TensorBoard `Arena/` metrics report light and heavy attempts, hits per round, and knockout rate. A swing counts as an attempt when its windup starts, even if the fighter cancels it.
 
 ## Evaluate a frozen checkpoint
 

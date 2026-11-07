@@ -39,6 +39,7 @@ public sealed class MeleeFighter : MonoBehaviour
     private float spawnRotation;
     private FighterEffects effects;
     private Attack activeAttack;
+    private bool activeAttackIsHeavy;
     private float windupRemaining;
     private float recoveryRemaining;
     private float dodgeEndsAt;
@@ -60,6 +61,8 @@ public sealed class MeleeFighter : MonoBehaviour
     public float GetAttackReach(bool isHeavy) => isHeavy ? heavy.reach : light.reach;
     public float MaxAttackReach => Mathf.Max(light.reach, heavy.reach);
     public Vector2 FacingDirection { get; private set; } = Vector2.right;
+    public event System.Action<bool> AttackStarted;
+    public event System.Action<bool> HitLanded;
 
     public void Face(Vector2 direction)
     {
@@ -86,10 +89,12 @@ public sealed class MeleeFighter : MonoBehaviour
             return false;
 
         activeAttack = isHeavy ? heavy : light;
+        activeAttackIsHeavy = isHeavy;
         Face(direction);
         windupRemaining = activeAttack.windup;
         effects.WindUp(activeAttack.reach, activeAttack.coneAngle,
             activeAttack.windup, isHeavy);
+        AttackStarted?.Invoke(isHeavy);
         return true;
     }
 
@@ -170,7 +175,8 @@ public sealed class MeleeFighter : MonoBehaviour
         if (opponent.IsAlive && IsInsideAttack(offset))
         {
             Vector2 pushDirection = offset.sqrMagnitude > 0.0001f ? offset.normalized : FacingDirection;
-            opponent.TakeDamage(activeAttack.damage, pushDirection);
+            if (opponent.TryTakeDamage(activeAttack.damage, pushDirection))
+                HitLanded?.Invoke(activeAttackIsHeavy);
         }
     }
 
@@ -207,21 +213,22 @@ public sealed class MeleeFighter : MonoBehaviour
         body.linearVelocity = Vector2.zero;
     }
 
-    private void TakeDamage(int damage, Vector2 pushDirection)
+    private bool TryTakeDamage(int damage, Vector2 pushDirection)
     {
         if (IsDodging)
-            return;
+            return false;
 
         Health = Mathf.Max(0, Health - damage);
         knockbackVelocity = pushDirection * (4f + damage * 0.12f);
         knockbackEndsAt = Time.time + KnockbackDuration;
         effects.Hit();
         if (IsAlive)
-            return;
+            return true;
 
         windupRemaining = 0f;
         healRemaining = 0f;
         effects.CancelWindup();
         body.linearVelocity = Vector2.zero;
+        return true;
     }
 }

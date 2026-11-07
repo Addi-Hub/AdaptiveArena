@@ -635,6 +635,7 @@ GameObject:
   - component: {fileID: 1104}
   - component: {fileID: 1105}
   - component: {fileID: 1106}
+  - component: {fileID: 1107}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -804,7 +805,7 @@ GameObject:
   - component: {fileID: 1206}
   - component: {fileID: 1207}
   m_Layer: 0
-  m_Name: Training Target
+  m_Name: Scripted Opponent
   m_TagString: Untagged
   m_IsActive: 1
 --- !u!4 &1201
@@ -852,7 +853,7 @@ Rigidbody2D:
   m_Interpolate: 1
   m_SleepingMode: 1
   m_CollisionDetection: 1
-  m_Constraints: 7
+  m_Constraints: 4
 --- !u!58 &1204
 CircleCollider2D:
   m_ObjectHideFlags: 0
@@ -895,6 +896,18 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   player: {fileID: 1103}
   attackInterval: 3
+  moveSpeed: 3.5
+--- !u!114 &1107
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_GameObject: {fileID: 1100}
+  m_Enabled: 1
+  m_Script: {fileID: 11500000, guid: 8afe390e53a6434a9f1aa71089118033, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  player: {fileID: 1106}
+  opponent: {fileID: 1206}
+  duration: 60
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

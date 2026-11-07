@@ -185,6 +185,8 @@ public sealed class ArenaMainMenu : MonoBehaviour
 [UnityEditor.InitializeOnLoad]
 internal static class ArenaTrainingPlayMode
 {
+    private const string BaselineOpponent = "AdaptiveArena.BaselineOpponent";
+    internal static bool UseBaselineOpponent => UnityEditor.SessionState.GetBool(BaselineOpponent, false);
     private const string SparringDodge = "AdaptiveArena.SparringDodge";
     internal static bool SparringDodges => UnityEditor.SessionState.GetBool(SparringDodge, false);
     private const string SparringOpponent = "AdaptiveArena.SparringOpponent";
@@ -208,6 +210,8 @@ internal static class ArenaTrainingPlayMode
         System.IO.Path.GetDirectoryName(Request), "evaluation-status");
     internal const string EvaluationModel = "Assets/_Game/LocalEvaluation/DashboardDuel.onnx";
     private const string EvaluationScene = "Assets/_Game/Scenes/BaselineEvaluation.unity";
+    private const string EvaluationSeed = "AdaptiveArena.EvaluationSeed";
+    internal static int GetEvaluationSeed(int fallback) => UnityEditor.SessionState.GetInt(EvaluationSeed, fallback);
     private const string EvaluationActive = "AdaptiveArena.EvaluationActive";
     private const string EvaluationComplete = "AdaptiveArena.EvaluationComplete";
     internal static bool IsDashboardEvaluation => UnityEditor.SessionState.GetBool(EvaluationActive, false);
@@ -295,6 +299,7 @@ internal static class ArenaTrainingPlayMode
                 System.Array.IndexOf(observations, "attack-ready") >= 0);
             UnityEditor.SessionState.SetBool(SparringOpponent, System.Array.IndexOf(observations, "sparring") >= 0);
             UnityEditor.SessionState.SetBool(SparringDodge, System.Array.IndexOf(observations, "sparring-dodge") >= 0);
+            UnityEditor.SessionState.SetBool(BaselineOpponent, System.Array.IndexOf(observations, "baseline-opponent") >= 0);
             var previous = UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene;
             UnityEditor.SessionState.SetString(PreviousScene, UnityEditor.AssetDatabase.GetAssetPath(previous) ?? "");
             UnityEditor.SessionState.SetBool(OverrideActive, true);
@@ -307,10 +312,21 @@ internal static class ArenaTrainingPlayMode
         }
     }
 
-    private static bool PrepareEvaluation(string runId)
+    private static bool PrepareEvaluation(string requestValue)
     {
         try
         {
+            string[] fields = requestValue.Split(':');
+            string runId = fields[0];
+            if (fields.Length > 1)
+            {
+                if (fields.Length != 2 || !int.TryParse(fields[1], out int seed) || seed < 0)
+                    throw new System.IO.IOException("Invalid evaluation seed.");
+                UnityEditor.SessionState.SetInt(EvaluationSeed, seed);
+            }
+            else
+                UnityEditor.SessionState.EraseInt(EvaluationSeed);
+
             if (!System.Text.RegularExpressions.Regex.IsMatch(runId, @"\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\z"))
                 throw new System.IO.IOException("Invalid run ID.");
 
@@ -351,11 +367,13 @@ internal static class ArenaTrainingPlayMode
         UnityEditor.SessionState.EraseBool(AttackReadyObservation);
         UnityEditor.SessionState.EraseBool(SparringOpponent);
         UnityEditor.SessionState.EraseBool(SparringDodge);
+        UnityEditor.SessionState.EraseBool(BaselineOpponent);
 
         if (IsDashboardEvaluation)
         {
             bool complete = UnityEditor.SessionState.GetBool(EvaluationComplete, false);
             UnityEditor.SessionState.EraseBool(EvaluationActive);
+            UnityEditor.SessionState.EraseInt(EvaluationSeed);
             UnityEditor.SessionState.EraseBool(EvaluationComplete);
             System.IO.File.WriteAllText(EvaluationStatus,
                 complete ? "Baseline evaluation complete." : "Baseline evaluation ended early.");

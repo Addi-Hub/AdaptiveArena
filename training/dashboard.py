@@ -46,6 +46,7 @@ METRICS = {
     "Arena/Close starts/Hits per round": "Close starts / hits",
     "Arena/Knockout rate": "Knockouts",
     "Arena/Sparring win rate": "Sparring win rate",
+    "Arena/Training Baseline win rate": "Training Baseline win rate",
     "Arena/Facing reward per fighter per round": "Facing bonus / fighter / round",
 }
 
@@ -100,9 +101,9 @@ def run_config(folder, resume, starts, target, seed, rate, interval, rewards=Non
     return config
 
 
-def dodging_sparring_config(source, destination, target):
+def fixed_opponent_config(source, destination, target, opponent):
     if destination.exists():
-        raise ValueError("Choose a new run ID for the dodging sparring run.")
+        raise ValueError("Choose a new run ID for this training stage.")
     if not (source / "ArenaDuel" / "checkpoint.pt").is_file():
         raise ValueError("Select a sparring run with a saved trainer checkpoint.")
     config = read_config(source / "configuration.yaml")
@@ -112,9 +113,11 @@ def dodging_sparring_config(source, destination, target):
     config["checkpoint_settings"] = {}
     behavior.pop("init_path", None)
     behavior["max_steps"] = target
-    config["environment_parameters"] = {
-        **(config.get("environment_parameters") or {}), "sparring_dodge": 1.0
-    }
+    parameters = config.get("environment_parameters") or {}
+    parameters.pop("sparring_dodge", None)
+    parameters.pop("sparring_baseline", None)
+    parameters[opponent] = 1.0
+    config["environment_parameters"] = parameters
     return config
 
 
@@ -194,7 +197,7 @@ def baseline_result(model):
         wins = outcomes.count("PlayerWin")
         losses = outcomes.count("OpponentWin")
         summary = (f"Baseline Bot: {wins} W / {losses} L / {len(rows) - wins - losses} D"
-                f" ({wins / len(rows):.0%} wins over {len(rows)} recorded matches)")
+                f" ({wins / len(rows):.0%} wins over {len(rows)} recorded matches, seed {rows[0].get('seed', '?')})")
         if "policy_damage_dealt" not in rows[0]:
             return summary + "\nRerun evaluation to collect damage and remaining HP."
         columns = ("policy_damage_dealt", "baseline_damage_dealt",
@@ -218,6 +221,7 @@ class Dashboard:
         self.window = window
         self.process = None
         self.evaluation_started = None
+        self.evaluation_seed = tk.StringVar(value="2027")
         self.lines = queue.Queue()
         self.accumulator = None
         self.selected = None
@@ -309,9 +313,16 @@ class Dashboard:
         self.evaluate_button = ttk.Button(evaluation_controls, text="Evaluate selected run vs Baseline Bot",
                                           command=self.evaluate, state="disabled")
         self.evaluate_button.pack(side="left")
-        self.dodging_button = ttk.Button(evaluation_controls, text="Continue selected vs Dodging Sparring Bot",
-                                         command=lambda: self.launch(False, dodging=True), state="disabled")
-        self.dodging_button.pack(side="left", padx=8)
+        ttk.Label(evaluation_controls, text="Evaluation seed").pack(side="left", padx=(12, 4))
+        ttk.Entry(evaluation_controls, textvariable=self.evaluation_seed, width=10).pack(side="left")
+        stage_controls = ttk.Frame(body)
+        stage_controls.pack(fill="x", pady=(0, 8))
+        self.dodging_button = ttk.Button(stage_controls, text="Continue selected vs Dodging Sparring Bot",
+                                         command=lambda: self.launch(False, opponent="sparring_dodge"), state="disabled")
+        self.dodging_button.pack(side="left")
+        self.baseline_training_button = ttk.Button(stage_controls, text="Continue selected vs Baseline Bot",
+            command=lambda: self.launch(False, opponent="sparring_baseline"), state="disabled")
+        self.baseline_training_button.pack(side="left", padx=8)
         stats = ttk.LabelFrame(body, text="Latest reported statistics", padding=10)
         stats.pack(fill="x")
         ttk.Label(stats, textvariable=self.progress_text).grid(row=0, column=0, columnspan=4, sticky="w")
@@ -349,7 +360,9 @@ class Dashboard:
         has_export = bool(self.selected) and (RESULTS / self.selected / "ArenaDuel.onnx").is_file()
         self.evaluate_button.configure(state="normal" if idle and has_export else "disabled")
         has_checkpoint = bool(self.selected) and (RESULTS / self.selected / "ArenaDuel" / "checkpoint.pt").is_file()
-        self.dodging_button.configure(state="normal" if idle and has_checkpoint else "disabled")
+        stage_state = "normal" if idle and has_checkpoint else "disabled"
+        self.dodging_button.configure(state=stage_state)
+        self.baseline_training_button.configure(state=stage_state)
 
     def evaluate(self):
         run_id = self.run.get()
@@ -361,7 +374,10 @@ class Dashboard:
             EVALUATION_REQUEST.parent.mkdir(parents=True, exist_ok=True)
             EVALUATION_STATUS.unlink(missing_ok=True)
             temporary = EVALUATION_REQUEST.with_suffix(".tmp")
-            temporary.write_text(run_id, encoding="utf-8")
+            seed = int(self.evaluation_seed.get())
+            if not 0 <= seed <= 2147483647:
+                raise ValueError("Evaluation seed must be between 0 and 2147483647.")
+            temporary.write_text(f"{run_id}:{seed}", encoding="utf-8")
             temporary.replace(EVALUATION_REQUEST)
         except (OSError, ValueError) as error:
             messagebox.showerror("Could not request evaluation", str(error), parent=self.window)
@@ -392,7 +408,7 @@ class Dashboard:
         self.run_picker.configure(state="readonly")
         self.select_run()
 
-    def launch(self, resume, dodging=False):
+    def launch(self, resume, opponent=None):
         run_id = self.run.get() if resume else self.name.get().strip()
         try:
             if not RUN_ID.fullmatch(run_id):
@@ -400,11 +416,11 @@ class Dashboard:
             target = int(self.target.get())
             if target <= 0:
                 raise ValueError("Enter a positive training step target.")
-            if dodging:
+            if opponent:
                 source_id = self.run.get()
                 if not RUN_ID.fullmatch(source_id):
                     raise ValueError("Select a sparring run first.")
-                config = dodging_sparring_config(RESULTS / source_id, RESULTS / run_id, target)
+                config = fixed_opponent_config(RESULTS / source_id, RESULTS / run_id, target, opponent)
                 arenas = config["env_settings"]["num_areas"]
             else:
                 arenas = int(self.arenas.get())
@@ -430,7 +446,8 @@ class Dashboard:
             observations = []
             parameters = config.get("environment_parameters") or {}
             for key, label in (("observe_attack_reach", "reach"), ("observe_aim_angle", "aim"),
-                               ("observe_attack_ready", "attack-ready"), ("sparring_dodge", "sparring-dodge")):
+                               ("observe_attack_ready", "attack-ready"), ("sparring_dodge", "sparring-dodge"),
+                               ("sparring_baseline", "baseline-opponent")):
                 value = parameters.get(key, 0)
                 if isinstance(value, dict):
                     value = value["curriculum"][0]["value"]["sampler_parameters"]["value"]
@@ -451,7 +468,7 @@ class Dashboard:
             command.append("--max-lifetime-restarts=0")
             if resume:
                 command.append("--resume")
-            elif dodging:
+            elif opponent:
                 command.append(f"--initialize-from={source_id}")
             self.process = subprocess.Popen(
                 command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

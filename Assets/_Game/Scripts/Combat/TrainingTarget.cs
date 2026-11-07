@@ -16,6 +16,7 @@ public sealed class TrainingTarget : MonoBehaviour
     private bool baselineBot;
     private bool sparringDodges;
     private bool nextAttackIsHeavy;
+    public bool IsBaseline => baselineBot;
 
     private void Awake()
     {
@@ -30,9 +31,9 @@ public sealed class TrainingTarget : MonoBehaviour
     private void OnEnable() => round.RoundReset += ResetTactics;
     private void OnDisable() => round.RoundReset -= ResetTactics;
 
-    public void EnableSparring(bool canDodge)
+    public void EnableTrainingOpponent(bool canDodge, bool useBaseline)
     {
-        baselineBot = false;
+        baselineBot = useBaseline;
         sparringDodges = canDodge;
         ResetTactics();
         enabled = true;

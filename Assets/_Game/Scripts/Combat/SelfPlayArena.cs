@@ -75,12 +75,14 @@ public sealed class SelfPlayArena : MonoBehaviour
 
         bool sparring = false;
         bool sparringDodges = false;
+        bool baselineOpponent = false;
         bool observeReach = false;
         bool observeAim = false;
         bool observeAttackReady = false;
 #if UNITY_EDITOR
         sparring = ArenaTrainingPlayMode.UseSparringOpponent;
         sparringDodges = ArenaTrainingPlayMode.SparringDodges;
+        baselineOpponent = ArenaTrainingPlayMode.UseBaselineOpponent;
         observeReach = ArenaTrainingPlayMode.ObserveReach;
         observeAim = ArenaTrainingPlayMode.ObserveAim;
         observeAttackReady = ArenaTrainingPlayMode.ObserveAttackReady;
@@ -88,7 +90,7 @@ public sealed class SelfPlayArena : MonoBehaviour
         firstAgent = SelfPlayFighterAgent.Attach(first, second, round, floor.bounds, 0,
             observeReach: observeReach, observeAim: observeAim, observeAttackReady: observeAttackReady);
         if (sparring)
-            second.GetComponent<TrainingTarget>().EnableSparring(sparringDodges);
+            second.GetComponent<TrainingTarget>().EnableTrainingOpponent(sparringDodges, baselineOpponent);
         else
             secondAgent = SelfPlayFighterAgent.Attach(second, first, round, floor.bounds, 1,
                 observeReach: observeReach, observeAim: observeAim, observeAttackReady: observeAttackReady);
@@ -194,7 +196,9 @@ public sealed class SelfPlayArena : MonoBehaviour
         };
         var stats = academy.StatsRecorder;
         if (secondAgent == null)
-            stats.Add("Arena/Sparring win rate", outcome == ArenaRound.Outcome.PlayerWin ? 1f : 0f);
+            stats.Add(second.GetComponent<TrainingTarget>().IsBaseline
+                ? "Arena/Training Baseline win rate" : "Arena/Sparring win rate",
+                outcome == ArenaRound.Outcome.PlayerWin ? 1f : 0f);
         if (rewards.GetWithDefault("reward_face_opponent", 0f) > 0f)
             stats.Add("Arena/Facing reward per fighter per round", secondAgent == null ? firstFacingReward : (firstFacingReward + secondFacingReward) * 0.5f);
         stats.Add("Arena/Light attempts per round", lightAttempts);

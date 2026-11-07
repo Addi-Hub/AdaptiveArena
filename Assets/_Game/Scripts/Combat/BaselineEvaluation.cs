@@ -54,7 +54,10 @@ public sealed class BaselineEvaluation : MonoBehaviour
         ModelAsset model = null;
 #if UNITY_EDITOR
         if (ArenaTrainingPlayMode.IsDashboardEvaluation)
+        {
             checkpointPath = ArenaTrainingPlayMode.EvaluationModel;
+            seed = ArenaTrainingPlayMode.GetEvaluationSeed(seed);
+        }
         model = UnityEditor.AssetDatabase.LoadAssetAtPath<ModelAsset>(checkpointPath);
 #endif
         if (model == null)

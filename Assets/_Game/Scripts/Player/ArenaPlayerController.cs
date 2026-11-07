@@ -34,28 +34,52 @@ public sealed class ArenaPlayerController : MonoBehaviour
 
     private void FixedUpdate()
     {
-        body.linearVelocity = fighter.IsAlive
-            ? Vector2.ClampMagnitude(move.ReadValue<Vector2>(), 1f) * moveSpeed
-            : Vector2.zero;
+        body.linearVelocity = fighter.GetMovementVelocity(move.ReadValue<Vector2>(), moveSpeed);
     }
 
     private void Update()
     {
-        if (Keyboard.current?.rKey.wasPressedThisFrame == true)
+        Keyboard keyboard = Keyboard.current;
+        if (keyboard?.rKey.wasPressedThisFrame == true)
         {
             SceneManager.LoadScene(gameObject.scene.buildIndex);
             return;
         }
 
         Mouse mouse = Mouse.current;
-        if (mouse == null || !fighter.IsAlive)
+        if (!fighter.IsAlive)
             return;
 
-        UpdateAim(mouse.position.ReadValue());
+        if (mouse != null)
+            UpdateAim(mouse.position.ReadValue());
+
+        if (keyboard?.spaceKey.wasPressedThisFrame == true)
+        {
+            Vector2 direction = move.ReadValue<Vector2>();
+            fighter.TryDodge(direction.sqrMagnitude > 0.0001f ? direction : aimDirection);
+            return;
+        }
+
+        if (keyboard?.eKey.wasPressedThisFrame == true)
+        {
+            fighter.TryHeal();
+            return;
+        }
+
+        if (mouse == null)
+            return;
         if (mouse.rightButton.wasPressedThisFrame)
             fighter.TryAttack(isHeavy: true, direction: aimDirection);
         else if (mouse.leftButton.wasPressedThisFrame)
             fighter.TryAttack(isHeavy: false, direction: aimDirection);
+    }
+
+    private void OnGUI()
+    {
+        string heal = fighter.IsHealing ? " (healing)" : "";
+        string dodge = fighter.IsDodging ? "Dodging" : fighter.IsDodgeReady ? "Ready" : "Cooling down";
+        GUI.Box(new Rect(12, 12, 280, 36),
+            $"HP {fighter.Health}/{fighter.MaxHealth}    Heals {fighter.HealCharges}{heal}    {dodge}");
     }
 
     private void LateUpdate()

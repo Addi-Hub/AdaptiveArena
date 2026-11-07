@@ -23,6 +23,14 @@ public sealed class MeleeFighter : MonoBehaviour
         damage = 30, reach = 1.75f, coneAngle = 110f, windup = 0.45f, recovery = 0.55f
     };
     [SerializeField] private MeleeFighter opponent;
+    [SerializeField, Min(0.02f)] private float dodgeDuration = 0.2f;
+    [SerializeField, Min(0f)] private float dodgeCooldown = 1f;
+    [SerializeField, Min(0f)] private float dodgeSpeed = 12f;
+
+    private const int HealAmount = 50;
+    private const int MaxHealCharges = 2;
+    private const float HealDuration = 2f;
+    private const float HealSpeedMultiplier = 0.5f;
 
     private const int ArcSegments = 16;
     private readonly Vector3[] outline = new Vector3[ArcSegments + 3];
@@ -34,11 +42,24 @@ public sealed class MeleeFighter : MonoBehaviour
     private Vector2 attackDirection;
     private float windupRemaining;
     private float recoveryRemaining;
+    private float dodgeEndsAt;
+    private float dodgeReadyAt;
+    private Vector2 dodgeDirection;
+    private float healRemaining;
 
     public int Health { get; private set; }
+    public int MaxHealth => maxHealth;
+    public int HealCharges { get; private set; } = MaxHealCharges;
     public bool IsAlive => Health > 0;
     public bool IsWindingUp => windupRemaining > 0f;
+    public bool IsDodging => Time.time < dodgeEndsAt;
+    public bool IsHealing => healRemaining > 0f;
+    public bool IsDodgeReady => Time.time >= dodgeReadyAt;
     public Vector2 AttackDirection => attackDirection;
+    public float HeavyReach => heavy.reach;
+
+    private bool CanAct => IsAlive && opponent.IsAlive && !IsWindingUp
+        && recoveryRemaining <= 0f && !IsDodging && !IsHealing;
 
     private void Awake()
     {
@@ -59,8 +80,7 @@ public sealed class MeleeFighter : MonoBehaviour
 
     public bool TryAttack(bool isHeavy, Vector2 direction)
     {
-        if (!IsAlive || !opponent.IsAlive || IsWindingUp || recoveryRemaining > 0f
-            || direction.sqrMagnitude < 0.0001f)
+        if (!CanAct || direction.sqrMagnitude < 0.0001f)
             return false;
 
         activeAttack = isHeavy ? heavy : light;
@@ -70,8 +90,50 @@ public sealed class MeleeFighter : MonoBehaviour
         return true;
     }
 
+    public bool TryDodge(Vector2 direction)
+    {
+        if (!CanAct || !IsDodgeReady || direction.sqrMagnitude < 0.0001f)
+            return false;
+
+        dodgeDirection = direction.normalized;
+        dodgeEndsAt = Time.time + dodgeDuration;
+        dodgeReadyAt = dodgeEndsAt + dodgeCooldown;
+        return true;
+    }
+
+    public bool TryHeal()
+    {
+        if (!CanAct || HealCharges == 0 || Health == maxHealth)
+            return false;
+
+        HealCharges--;
+        healRemaining = HealDuration;
+        return true;
+    }
+
+    public Vector2 GetMovementVelocity(Vector2 input, float moveSpeed)
+    {
+        if (!IsAlive)
+            return Vector2.zero;
+        if (IsDodging)
+            return dodgeDirection * dodgeSpeed;
+
+        float speed = IsHealing ? moveSpeed * HealSpeedMultiplier : moveSpeed;
+        return Vector2.ClampMagnitude(input, 1f) * speed;
+    }
+
     private void FixedUpdate()
     {
+        if (IsHealing)
+        {
+            healRemaining = Mathf.Max(0f, healRemaining - Time.fixedDeltaTime);
+            if (!IsHealing)
+            {
+                Health = Mathf.Min(maxHealth, Health + HealAmount);
+                UpdateHealthColor();
+            }
+        }
+
         if (!IsWindingUp)
         {
             recoveryRemaining = Mathf.Max(0f, recoveryRemaining - Time.fixedDeltaTime);
@@ -92,15 +154,24 @@ public sealed class MeleeFighter : MonoBehaviour
 
     private void TakeDamage(int damage)
     {
+        if (IsDodging)
+            return;
+
         Health = Mathf.Max(0, Health - damage);
-        fighterSprite.color = Color.Lerp(new Color(0.25f, 0.25f, 0.28f), healthyColor,
-            (float)Health / maxHealth);
+        UpdateHealthColor();
         if (IsAlive)
             return;
 
         windupRemaining = 0f;
+        healRemaining = 0f;
         telegraph.enabled = false;
         body.linearVelocity = Vector2.zero;
+    }
+
+    private void UpdateHealthColor()
+    {
+        fighterSprite.color = Color.Lerp(new Color(0.25f, 0.25f, 0.28f), healthyColor,
+            (float)Health / maxHealth);
     }
 
     private void ShowTelegraph(Color color)

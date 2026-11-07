@@ -1,0 +1,148 @@
+using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
+
+public sealed class ArenaMainMenu : MonoBehaviour
+{
+    private enum Page { Home, Bots, Training, Options }
+
+    public const string SceneName = "MainMenu";
+    private const string VolumeKey = "Arena.MasterVolume";
+    private static readonly Color Background = new Color(0.035f, 0.055f, 0.085f);
+    private static readonly Color Accent = new Color(0.30f, 0.88f, 0.76f);
+    private static readonly Color Muted = new Color(0.72f, 0.78f, 0.84f);
+
+    public static bool UseBaselineBot { get; private set; }
+
+    private Page page;
+    private GUIStyle heading;
+    private GUIStyle copy;
+    private GUIStyle button;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetSelection() => UseBaselineBot = false;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void LoadVolume() => AudioListener.volume = PlayerPrefs.GetFloat(VolumeKey, 1f);
+
+    private void Update()
+    {
+        if (Keyboard.current?.escapeKey.wasPressedThisFrame == true)
+            page = Page.Home;
+    }
+
+    private void OnGUI()
+    {
+        heading ??= TextStyle(49, FontStyle.Bold, Color.white);
+        copy ??= TextStyle(19, FontStyle.Normal, Muted);
+        button ??= new GUIStyle(GUI.skin.button) { fontSize = 20, fontStyle = FontStyle.Bold };
+
+        Paint(new Rect(0, 0, Screen.width, Screen.height), Background);
+        float scale = Mathf.Min(Screen.width / 900f, Screen.height / 550f);
+        if (scale <= 0f)
+            return;
+
+        Matrix4x4 previous = GUI.matrix;
+        float left = (Screen.width - 900f * scale) / 2f;
+        float top = (Screen.height - 550f * scale) / 2f;
+        GUI.matrix = Matrix4x4.TRS(new Vector3(left, top, 0), Quaternion.identity,
+            new Vector3(scale, scale, 1)) * previous;
+
+        Paint(new Rect(265, 61, 370, 4), Accent);
+        switch (page)
+        {
+            case Page.Home: DrawHome(); break;
+            case Page.Bots: DrawBots(); break;
+            case Page.Training: DrawTraining(); break;
+            case Page.Options: DrawOptions(); break;
+        }
+
+        if (page != Page.Home && Button(477, "Back"))
+            page = Page.Home;
+        GUI.matrix = previous;
+    }
+
+    private void DrawHome()
+    {
+        Title("ADAPTIVE ARENA", "DUEL  /  TRAIN  /  IMPROVE");
+        if (Button(209, "Play vs Bot")) page = Page.Bots;
+        if (Button(269, "Training")) page = Page.Training;
+        if (Button(329, "Options")) page = Page.Options;
+        if (Button(389, "Quit"))
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
+        }
+    }
+
+    private void DrawBots()
+    {
+        Title("CHOOSE A BOT", "SCRIPTED OPPONENTS");
+        if (Button(209, "Sparring Partner"))
+            StartDuel(false);
+        GUI.Label(new Rect(220, 263, 460, 32), "Practices heavy swings with long pauses.", copy);
+
+        if (Button(314, "Baseline Bot"))
+            StartDuel(true);
+        GUI.Label(new Rect(200, 368, 500, 32), "Mixes light and heavy swings, dodges, and heals.", copy);
+    }
+
+    private void DrawTraining()
+    {
+        Title("TRAINING", "REINFORCEMENT LEARNING");
+        Paint(new Rect(173, 213, 554, 157), new Color(0.08f, 0.12f, 0.17f));
+        GUI.Label(new Rect(193, 231, 514, 31), "TRAINER OFFLINE", copy);
+        GUI.Label(new Rect(193, 270, 514, 31), "Active arenas  0     Episodes  —     Mean reward  —", copy);
+        GUI.Label(new Rect(193, 309, 514, 43), "Connect ML-Agents to start a training run.", copy);
+    }
+
+    private void DrawOptions()
+    {
+        Title("OPTIONS", "AUDIO");
+        GUI.Label(new Rect(265, 219, 370, 32),
+            $"Master volume   {Mathf.RoundToInt(AudioListener.volume * 100f)}%", copy);
+        float volume = GUI.HorizontalSlider(new Rect(265, 276, 370, 28), AudioListener.volume, 0f, 1f);
+        if (!Mathf.Approximately(volume, AudioListener.volume))
+        {
+            AudioListener.volume = volume;
+            PlayerPrefs.SetFloat(VolumeKey, volume);
+        }
+    }
+
+    private void Title(string title, string subtitle)
+    {
+        GUI.Label(new Rect(90, 79, 720, 65), title, heading);
+        GUI.Label(new Rect(90, 148, 720, 28), subtitle, copy);
+    }
+
+    private bool Button(float top, string label) => GUI.Button(new Rect(265, top, 370, 48), label, button);
+
+    private static void StartDuel(bool baselineBot)
+    {
+        UseBaselineBot = baselineBot;
+        SceneManager.LoadScene("Arena");
+    }
+
+    private static GUIStyle TextStyle(int size, FontStyle weight, Color color)
+    {
+        var style = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontSize = size,
+            fontStyle = weight
+        };
+        style.normal.textColor = color;
+        return style;
+    }
+
+    private static void Paint(Rect rect, Color color)
+    {
+        Color previous = GUI.color;
+        GUI.color = color;
+        GUI.DrawTexture(rect, Texture2D.whiteTexture);
+        GUI.color = previous;
+    }
+}

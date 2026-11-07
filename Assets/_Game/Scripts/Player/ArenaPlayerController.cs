@@ -7,7 +7,6 @@ public sealed class ArenaPlayerController : MonoBehaviour
 {
     [SerializeField] private InputActionAsset inputActions;
     [SerializeField] private Camera arenaCamera;
-    [SerializeField, Min(0f)] private float moveSpeed = 5f;
 
     private Rigidbody2D body;
     private MeleeFighter fighter;
@@ -33,12 +32,18 @@ public sealed class ArenaPlayerController : MonoBehaviour
 
     private void FixedUpdate()
     {
-        body.linearVelocity = fighter.GetMovementVelocity(move.ReadValue<Vector2>(), moveSpeed);
+        body.linearVelocity = fighter.GetMovementVelocity(move.ReadValue<Vector2>());
     }
 
     private void Update()
     {
         Keyboard keyboard = Keyboard.current;
+        if (keyboard?.escapeKey.wasPressedThisFrame == true)
+        {
+            SceneManager.LoadScene(ArenaMainMenu.SceneName);
+            return;
+        }
+
         if (keyboard?.rKey.wasPressedThisFrame == true)
         {
             SceneManager.LoadScene(gameObject.scene.buildIndex);

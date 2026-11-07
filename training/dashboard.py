@@ -55,7 +55,7 @@ def saved_step(folder):
     return max(steps, default=0)
 
 
-def run_config(folder, resume, starts, target, seed, rate, interval, rewards=None):
+def run_config(folder, resume, starts, target, seed, rate, interval, rewards=None, arenas=1):
     if resume:
         config = read_config(folder / "configuration.yaml")
         step = saved_step(folder)
@@ -73,6 +73,7 @@ def run_config(folder, resume, starts, target, seed, rate, interval, rewards=Non
         behavior = config["behaviors"]["ArenaDuel"]
         behavior["hyperparameters"]["learning_rate"] = rate
         behavior["checkpoint_interval"] = interval
+    config.setdefault("env_settings", {})["num_areas"] = arenas
     if rewards is not None:
         config["environment_parameters"] = {**(config.get("environment_parameters") or {}), **rewards}
     config["behaviors"]["ArenaDuel"]["max_steps"] = target
@@ -112,6 +113,7 @@ class Dashboard:
         self.seed = tk.StringVar(value="4107")
         self.rate = tk.StringVar(value="0.0003")
         self.interval = tk.StringVar(value="50000")
+        self.arenas = tk.StringVar(value="4")
         self.rewards = {key: tk.StringVar(value=str(default)) for key, (_, default) in REWARDS.items()}
         self.override_rewards = tk.BooleanVar()
         self.status = tk.StringVar(value="Ready. Keep Unity open and start or resume a run.")
@@ -126,7 +128,7 @@ class Dashboard:
 
     def build(self):
         self.window.title("Adaptive Arena | Training Dashboard")
-        self.window.geometry("900x760")
+        self.window.geometry("900x810")
         self.window.minsize(780, 700)
         body = ttk.Frame(self.window, padding=16)
         body.pack(fill="both", expand=True)
@@ -137,7 +139,7 @@ class Dashboard:
         for index, (label, value) in enumerate((
             ("New run ID", self.name), ("Starts", self.starts), ("Seed", self.seed),
             ("Learning rate", self.rate), ("Checkpoint interval", self.interval),
-            ("Total target steps", self.target),
+            ("Total target steps", self.target), ("Parallel arenas (1–16)", self.arenas),
         )):
             row, column = divmod(index, 3)
             ttk.Label(settings, text=label).grid(row=row * 2, column=column, sticky="w", padx=(0, 16))
@@ -209,6 +211,9 @@ class Dashboard:
             if not RUN_ID.fullmatch(run_id):
                 raise ValueError("Use a run ID of up to 64 letters, digits, hyphens or underscores.")
             target = int(self.target.get())
+            arenas = int(self.arenas.get())
+            if not 1 <= arenas <= 16:
+                raise ValueError("Parallel arenas must be between 1 and 16.")
             seed = 0 if resume else int(self.seed.get())
             rate = 0.0 if resume else float(self.rate.get())
             interval = 0 if resume else int(self.interval.get())
@@ -220,7 +225,7 @@ class Dashboard:
                 rewards = {key: float(value.get()) for key, value in self.rewards.items()}
                 if any(not math.isfinite(value) or abs(value) > 1e6 for value in rewards.values()):
                     raise ValueError("Rewards must be finite numbers between -1,000,000 and 1,000,000.")
-            config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval, rewards)
+            config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval, rewards, arenas)
             PLAY_REQUEST.unlink(missing_ok=True)
             STOP_REQUEST.unlink(missing_ok=True)
             staging = ROOT / "Library" / "ArenaTraining"
@@ -242,6 +247,7 @@ class Dashboard:
         except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as error:
             messagebox.showerror("Could not start trainer", str(error), parent=self.window)
             return
+        self.active_arenas = arenas
         self.run.set(run_id)
         self.select_run()
         self.run_picker.configure(state="disabled")
@@ -287,7 +293,7 @@ class Dashboard:
                         self.status.set("Could not signal Unity. Open SelfPlayArena and press Play.")
                         self.append_log(f"Unity launch request failed: {error}\n")
                 elif "Connected to Unity environment" in line:
-                    self.status.set("Training live.")
+                    self.status.set(f"Training live · {self.active_arenas} arena(s) requested.")
                     self.stop_button.configure(state="normal")
         if self.process is not None:
             code = self.process.poll()

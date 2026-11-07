@@ -375,6 +375,8 @@ Transform:
   - {fileID: 1031}
   - {fileID: 1041}
   - {fileID: 1051}
+  - {fileID: 1101}
+  - {fileID: 1201}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1002
@@ -659,7 +661,7 @@ Transform:
   m_LocalPosition: {x: -3.4, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 1001}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!212 &1102
 SpriteRenderer:
@@ -751,7 +753,7 @@ Transform:
   m_LocalPosition: {x: 3.4, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 1001}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!212 &1202
 SpriteRenderer:
@@ -850,5 +852,3 @@ SceneRoots:
   - {fileID: 519420032}
   - {fileID: 619394802}
   - {fileID: 1001}
-  - {fileID: 1101}
-  - {fileID: 1201}

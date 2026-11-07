@@ -1,6 +1,7 @@
 using Unity.MLAgents;
 using UnityEngine;
 
+[DefaultExecutionOrder(-100)]
 [RequireComponent(typeof(ArenaRound))]
 public sealed class SelfPlayArena : MonoBehaviour
 {
@@ -9,7 +10,10 @@ public sealed class SelfPlayArena : MonoBehaviour
     [SerializeField] private SpriteRenderer floor;
 
     private const int DecisionPeriod = 5;
+    private const int MaxArenas = 16;
+    private const float ArenaSpacing = 16f;
     private const float CloseStartDistance = 1.4f;
+    private static bool cloningArenas;
     private Academy academy;
     private ArenaRound round;
     private SelfPlayFighterAgent firstAgent;
@@ -23,6 +27,35 @@ public sealed class SelfPlayArena : MonoBehaviour
     private int heavyAttempts;
     private int lightHits;
     private int heavyHits;
+
+    private void Awake()
+    {
+        if (cloningArenas)
+            return;
+
+        var sharedAcademy = Academy.Instance;
+        if (!sharedAcademy.IsCommunicatorOn)
+            return;
+
+        int arenaCount = Mathf.Clamp(sharedAcademy.NumAreas, 1, MaxArenas);
+        Transform arenaRoot = floor.transform.parent;
+        // Clone before the fighters and arena dressing create their runtime visuals.
+        cloningArenas = true;
+        try
+        {
+            for (int index = 1; index < arenaCount; index++)
+            {
+                Vector3 offset = new Vector3(index % 4, index / 4, 0f) * ArenaSpacing;
+                var copy = Instantiate(arenaRoot, arenaRoot.position + offset, arenaRoot.rotation);
+                copy.name = $"Arena {index + 1}";
+            }
+        }
+        finally
+        {
+            cloningArenas = false;
+        }
+        Debug.Log($"Self-play ready: {arenaCount} parallel arena(s).");
+    }
 
     private void Start()
     {

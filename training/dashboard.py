@@ -29,6 +29,7 @@ REWARDS = {
     "reward_draw": ("Draw", 0),
     "reward_damage_dealt": ("Per HP dealt", 0.003),
     "reward_damage_taken": ("Per HP taken", -0.003),
+    "reward_face_opponent": ("Facing bonus / decision", 0),
 }
 RUN_ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}")
 CHECKPOINT = re.compile(r"ArenaDuel-(\d+)\.pt")
@@ -42,6 +43,7 @@ METRICS = {
     "Arena/Normal starts/Hits per round": "Normal starts / hits",
     "Arena/Close starts/Hits per round": "Close starts / hits",
     "Arena/Knockout rate": "Knockouts",
+    "Arena/Facing reward per fighter per round": "Facing bonus / fighter / round",
 }
 
 
@@ -242,7 +244,7 @@ class Dashboard:
             )
             rewards.columnconfigure(column, weight=1)
         ttk.Checkbutton(rewards, text="Apply these rewards when resuming (otherwise keep saved rewards)",
-                        variable=self.override_rewards).grid(row=2, column=0, columnspan=5, sticky="w")
+                        variable=self.override_rewards).grid(row=2, column=0, columnspan=len(REWARDS), sticky="w")
         controls = ttk.Frame(body)
         controls.pack(fill="x", pady=10)
         self.start_button = ttk.Button(controls, text="Start new run", command=lambda: self.launch(False))
@@ -354,6 +356,8 @@ class Dashboard:
             rewards = None
             if not resume or self.override_rewards.get():
                 rewards = {key: float(value.get()) for key, value in self.rewards.items()}
+                if not 0 <= rewards["reward_face_opponent"] <= 0.01:
+                    raise ValueError("Facing bonus must be between 0 and 0.01 per decision.")
                 if any(not math.isfinite(value) or abs(value) > 1e6 for value in rewards.values()):
                     raise ValueError("Rewards must be finite numbers between -1,000,000 and 1,000,000.")
             config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval,

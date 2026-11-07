@@ -20,6 +20,11 @@ public sealed class SelfPlayArena : MonoBehaviour
     private SelfPlayFighterAgent secondAgent;
     private Rigidbody2D firstBody;
     private Rigidbody2D secondBody;
+    private const float FacingRewardCap = 0.05f;
+    private const float FacingDotThreshold = 0.8660254f; // cos(30 degrees)
+    private float firstFacingReward;
+    private float secondFacingReward;
+    private bool hasRequestedDecision;
     private int completedRounds;
     private bool closeStart;
     private int ticksUntilDecision;
@@ -95,9 +100,31 @@ public sealed class SelfPlayArena : MonoBehaviour
             return;
         }
 
+        float facingReward = academy.EnvironmentParameters.GetWithDefault("reward_face_opponent", 0f);
+        if (hasRequestedDecision && facingReward > 0f)
+        {
+            Vector2 offset = secondBody.position - firstBody.position;
+            RewardFacing(first, firstAgent, offset, facingReward, ref firstFacingReward);
+            RewardFacing(second, secondAgent, -offset, facingReward, ref secondFacingReward);
+        }
+
+        hasRequestedDecision = true;
         firstAgent.RequestDecision();
         secondAgent.RequestDecision();
         ticksUntilDecision = DecisionPeriod - 1;
+    }
+
+    private static void RewardFacing(MeleeFighter fighter, SelfPlayFighterAgent agent,
+        Vector2 toOpponent, float reward, ref float earned)
+    {
+        float reach = fighter.MaxAttackReach;
+        if (earned >= FacingRewardCap || toOpponent.sqrMagnitude > reach * reach
+            || Vector2.Dot(fighter.FacingDirection, toOpponent.normalized) < FacingDotThreshold)
+            return;
+
+        float bonus = Mathf.Min(reward, FacingRewardCap - earned);
+        agent.AddReward(bonus);
+        earned += bonus;
     }
 
     private void CountAttempt(bool isHeavy)
@@ -133,6 +160,8 @@ public sealed class SelfPlayArena : MonoBehaviour
             _ => (draw, draw)
         };
         var stats = academy.StatsRecorder;
+        if (rewards.GetWithDefault("reward_face_opponent", 0f) > 0f)
+            stats.Add("Arena/Facing reward per fighter per round", (firstFacingReward + secondFacingReward) * 0.5f);
         stats.Add("Arena/Light attempts per round", lightAttempts);
         stats.Add("Arena/Heavy attempts per round", heavyAttempts);
         stats.Add("Arena/Light hits per round", lightHits);
@@ -154,6 +183,8 @@ public sealed class SelfPlayArena : MonoBehaviour
     {
         lightAttempts = heavyAttempts = lightHits = heavyHits = 0;
         ticksUntilDecision = 0;
+        firstFacingReward = secondFacingReward = 0f;
+        hasRequestedDecision = false;
         round.ResetRound();
         closeStart = academy.EnvironmentParameters.GetWithDefault("alternate_close_starts", 0f) > 0.5f
             && completedRounds % 2 == 1;

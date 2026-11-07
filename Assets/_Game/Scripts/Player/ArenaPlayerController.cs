@@ -10,13 +10,14 @@ public sealed class ArenaPlayerController : MonoBehaviour
 
     private Rigidbody2D body;
     private MeleeFighter fighter;
+    private ArenaRound round;
     private InputAction move;
-    private Vector2 aimDirection = Vector2.right;
 
     private void Awake()
     {
         body = GetComponent<Rigidbody2D>();
         fighter = GetComponent<MeleeFighter>();
+        round = GetComponent<ArenaRound>();
         move = inputActions.FindAction("Player/Move", throwIfNotFound: true).Clone();
     }
 
@@ -46,7 +47,7 @@ public sealed class ArenaPlayerController : MonoBehaviour
 
         if (keyboard?.rKey.wasPressedThisFrame == true)
         {
-            SceneManager.LoadScene(gameObject.scene.buildIndex);
+            round.ResetRound();
             return;
         }
 
@@ -60,7 +61,7 @@ public sealed class ArenaPlayerController : MonoBehaviour
         if (keyboard?.spaceKey.wasPressedThisFrame == true)
         {
             Vector2 direction = move.ReadValue<Vector2>();
-            fighter.TryDodge(direction.sqrMagnitude > 0.0001f ? direction : aimDirection);
+            fighter.TryDodge(direction.sqrMagnitude > 0.0001f ? direction : fighter.FacingDirection);
             return;
         }
 
@@ -73,9 +74,9 @@ public sealed class ArenaPlayerController : MonoBehaviour
         if (mouse == null)
             return;
         if (mouse.rightButton.wasPressedThisFrame)
-            fighter.TryAttack(isHeavy: true, direction: aimDirection);
+            fighter.TryAttack(isHeavy: true, direction: fighter.FacingDirection);
         else if (mouse.leftButton.wasPressedThisFrame)
-            fighter.TryAttack(isHeavy: false, direction: aimDirection);
+            fighter.TryAttack(isHeavy: false, direction: fighter.FacingDirection);
     }
 
     private void UpdateAim(Vector2 cursorPosition)
@@ -86,10 +87,6 @@ public sealed class ArenaPlayerController : MonoBehaviour
             return;
 
         Vector2 aim = cursorRay.GetPoint(distance) - transform.position;
-        if (aim.sqrMagnitude > 0.0001f)
-        {
-            aimDirection = aim.normalized;
-            fighter.Face(aimDirection);
-        }
+        fighter.Face(aim);
     }
 }

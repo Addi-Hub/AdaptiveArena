@@ -80,6 +80,17 @@ public sealed class FighterEffects : MonoBehaviour
         swingStart = -1f;
     }
     public void Hit() => hitUntil = Time.time + 0.12f;
+
+    public void ResetForRound()
+    {
+        CancelAttack();
+        hitUntil = healUntil = 0f;
+        ring.enabled = false;
+        dodgeTrail.emitting = false;
+        dodgeTrail.Clear();
+        sprite.color = fighterColor;
+        AnimateSword();
+    }
     public void HealComplete() => healUntil = Time.time + 0.45f;
 
     private void LateUpdate()

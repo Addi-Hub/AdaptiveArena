@@ -3,12 +3,16 @@ using UnityEngine;
 [DefaultExecutionOrder(100)]
 public sealed class ArenaRound : MonoBehaviour
 {
+    public enum Outcome { InProgress, PlayerWin, OpponentWin, DoubleKnockout, Timeout }
+
     [SerializeField] private MeleeFighter player;
     [SerializeField] private MeleeFighter opponent;
     [SerializeField, Min(1f)] private float duration = 60f;
 
     private float remaining;
-    private string result;
+    public Outcome Result { get; private set; }
+    public event System.Action<Outcome> RoundEnded;
+    public event System.Action RoundReset;
     private GUIStyle label;
     private GUIStyle number;
     private GUIStyle timer;
@@ -20,27 +24,37 @@ public sealed class ArenaRound : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (result != null)
+        if (Result != Outcome.InProgress)
             return;
 
         remaining = Mathf.Max(0f, remaining - Time.fixedDeltaTime);
         if (!player.IsAlive || !opponent.IsAlive)
         {
             if (player.IsAlive == opponent.IsAlive)
-                result = "Draw — double knockout";
+                Result = Outcome.DoubleKnockout;
             else
-                result = player.IsAlive ? "You win" : "Opponent wins";
+                Result = player.IsAlive ? Outcome.PlayerWin : Outcome.OpponentWin;
         }
         else if (remaining <= 0f)
         {
-            result = "Draw — time expired";
+            Result = Outcome.Timeout;
         }
 
-        if (result != null)
+        if (Result != Outcome.InProgress)
         {
             player.EndRound();
             opponent.EndRound();
+            RoundEnded?.Invoke(Result);
         }
+    }
+
+    public void ResetRound()
+    {
+        player.ResetForRound(Vector2.right);
+        opponent.ResetForRound(Vector2.left);
+        remaining = duration;
+        Result = Outcome.InProgress;
+        RoundReset?.Invoke();
     }
 
     private void OnGUI()
@@ -69,11 +83,18 @@ public sealed class ArenaRound : MonoBehaviour
         Fill(new Rect(clock.x, clock.yMax - 3f, clock.width, 3f), new Color(0.91f, 0.68f, 0.34f));
         GUI.Label(clock, Mathf.CeilToInt(remaining).ToString("00"), timer);
 
-        if (result != null)
+        if (Result != Outcome.InProgress)
         {
             Rect panel = new Rect(width / 2f - 180f, height / 2f - 49f, 360, 98);
             Fill(panel, new Color(0.04f, 0.06f, 0.09f, 0.96f));
-            GUI.Label(new Rect(panel.x, panel.y + 8f, panel.width, 45), result, number);
+            string message = Result switch
+            {
+                Outcome.PlayerWin => "You win",
+                Outcome.OpponentWin => "Opponent wins",
+                Outcome.DoubleKnockout => "Draw — double knockout",
+                _ => "Draw — time expired"
+            };
+            GUI.Label(new Rect(panel.x, panel.y + 8f, panel.width, 45), message, number);
             GUI.Label(new Rect(panel.x, panel.y + 54f, panel.width, 27), "R   RESTART", label);
         }
 
@@ -94,7 +115,7 @@ public sealed class ArenaRound : MonoBehaviour
         GUI.Label(score, $"{fighter.Health} / {fighter.MaxHealth}", number);
 
         string dodge = fighter.IsDodging ? "DODGING" : fighter.IsDodgeReady ? "DODGE READY" : "DODGE COOLDOWN";
-        if (result != null)
+        if (Result != Outcome.InProgress)
             dodge = "ROUND OVER";
         string heal = fighter.IsHealing ? "HEALING" : $"HEALS {fighter.HealCharges}";
         GUI.Label(new Rect(bar.x, bar.yMax + 3, bar.width, 21), $"{heal}     {dodge}", label);

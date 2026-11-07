@@ -35,6 +35,8 @@ public sealed class MeleeFighter : MonoBehaviour
     private const float KnockbackDuration = 0.18f;
 
     private Rigidbody2D body;
+    private Vector2 spawnPosition;
+    private float spawnRotation;
     private FighterEffects effects;
     private Attack activeAttack;
     private float windupRemaining;
@@ -72,6 +74,8 @@ public sealed class MeleeFighter : MonoBehaviour
     {
         Health = maxHealth;
         body = GetComponent<Rigidbody2D>();
+        spawnPosition = body.position;
+        spawnRotation = body.rotation;
         effects = gameObject.AddComponent<FighterEffects>();
         effects.Initialize(GetComponent<SpriteRenderer>());
     }
@@ -174,6 +178,23 @@ public sealed class MeleeFighter : MonoBehaviour
     {
         return offset.sqrMagnitude <= activeAttack.reach * activeAttack.reach
             && Vector2.Angle(FacingDirection, offset) <= activeAttack.coneAngle * 0.5f;
+    }
+
+    public void ResetForRound(Vector2 facing)
+    {
+        Health = maxHealth;
+        HealCharges = MaxHealCharges;
+        roundEnded = false;
+        activeAttack = default;
+        windupRemaining = recoveryRemaining = healRemaining = 0f;
+        dodgeEndsAt = dodgeReadyAt = knockbackEndsAt = 0f;
+        dodgeDirection = knockbackVelocity = Vector2.zero;
+        FacingDirection = facing;
+        body.position = spawnPosition;
+        body.rotation = spawnRotation;
+        body.linearVelocity = Vector2.zero;
+        body.angularVelocity = 0f;
+        effects.ResetForRound();
     }
 
     public void EndRound()

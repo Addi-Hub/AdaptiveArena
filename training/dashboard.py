@@ -1,4 +1,5 @@
 """Local Adaptive Arena trainer dashboard. Run with the ML-Agents Python environment."""
+from collections import Counter
 import csv
 import hashlib
 import math
@@ -83,6 +84,33 @@ def run_config(folder, resume, starts, target, seed, rate, interval, rewards=Non
     return config
 
 
+def swing_summary(report, digest, completed_matches):
+    swing_report = report.with_name(f"swings-{report.name}")
+    if not swing_report.is_file():
+        return "Rerun evaluation to collect swing reasons."
+
+    counts = {"left": Counter(), "right": Counter()}
+    with swing_report.open(newline="", encoding="utf-8-sig") as stream:
+        for row in csv.DictReader(stream):
+            side = row.get("policy_side")
+            if (row.get("fighter") == "policy" and side in counts
+                    and row.get("match") in completed_matches
+                    and (row.get("checkpoint_sha256") or "").lower() == digest):
+                counts[side][row.get("outcome")] += 1
+
+    lines = ["Model swings by starting side"]
+    for side, outcomes in counts.items():
+        if not outcomes:
+            lines.append(f"{side.title()}: no active swings recorded")
+            continue
+        lines.append(
+            f"{side.title()}: {outcomes['hit']} hits · {outcomes['out_of_range']} range misses"
+            f" · {outcomes['outside_cone']} aim misses · {outcomes['range_and_aim']} both"
+            f" · {outcomes['dodged']} dodged · {outcomes['target_defeated']} target down"
+        )
+    return "\n".join(lines)
+
+
 def baseline_result(model):
     if not model.is_file():
         return "Baseline Bot: waiting for a model export"
@@ -108,9 +136,11 @@ def baseline_result(model):
             )
         except (KeyError, TypeError, ValueError):
             return summary
-        return (summary + f"\nAverage per match (model / baseline)   "
+        damage_summary = (f"Average per match (model / baseline)   "
                 f"Damage dealt {policy_damage:.1f} / {baseline_damage:.1f}   "
                 f"HP remaining {policy_hp:.1f} / {baseline_hp:.1f}")
+        completed = {row["match"] for row in rows if row.get("match") and row.get("outcome")}
+        return "\n".join((summary, damage_summary, swing_summary(report, digest, completed)))
     return "Baseline Bot: no report for the latest export"
 
 
@@ -202,7 +232,7 @@ class Dashboard:
             ttk.Label(stats, textvariable=self.values[tag]).grid(row=row + 2, column=column * 2 + 1, sticky="w")
         for column in (1, 3):
             stats.columnconfigure(column, weight=1)
-        ttk.Label(stats, textvariable=self.baseline).grid(
+        ttk.Label(stats, textvariable=self.baseline, justify="left", wraplength=715).grid(
             row=2 + (len(METRICS) + 1) // 2, column=0, columnspan=4, sticky="w", pady=(8, 0)
         )
         ttk.Label(body, text="Trainer output").pack(anchor="w", pady=(10, 2))
@@ -409,7 +439,8 @@ class Dashboard:
         self.progress["value"] = min(100, 100 * step / target) if target else 0
         self.progress_text.set(f"{self.selected}   |   {step:,} / {target:,} steps   |   Checkpoint {checkpoint:,}")
         model = folder / "ArenaDuel.onnx"
-        watched = [model, *(RESULTS / "baseline-evaluations").glob("baseline-*.csv")]
+        reports = RESULTS / "baseline-evaluations"
+        watched = [model, *reports.glob("baseline-*.csv"), *reports.glob("swings-baseline-*.csv")]
         stamp = tuple(sorted((str(path), path.stat().st_mtime_ns) for path in watched if path.is_file()))
         if stamp != self.baseline_files:
             self.baseline.set(baseline_result(model))

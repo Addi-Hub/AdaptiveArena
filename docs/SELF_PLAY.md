@@ -32,7 +32,7 @@ Use Unity 6000.3.9f1 and Python 3.10.12. The Unity project requests ML-Agents 4.
 
 The 10,000-step smoke run checks wiring and checkpoint creation. Use the separate baseline evaluation to judge policy strength.
 
-## Train with hit rewards
+## Previous draw-penalty experiment
 
 Start a fresh run using the same Conda environment. The hit-reward configuration runs for 50,000 steps with checkpoints every 10,000 steps.
 
@@ -44,6 +44,19 @@ $conda = "$env:USERPROFILE\anaconda3\Scripts\conda.exe"
 Use `SelfPlayArena.unity` and press **Play** when the trainer prompts you. A landed light or heavy hit gives the attacker +1 and the defender −1. A knockout adds +200 to the winner and −200 to the loser. A draw adds −100 to each fighter. Terminal rewards are added to the hit rewards accumulated during the round.
 
 TensorBoard reports light and heavy attempts, hits per round, and knockout rate under `Arena/`. A swing counts as an attempt when its windup starts, even if the fighter cancels it. ML-Agents infers the Elo outcome from the sign of the final reward, so a penalized draw can register as a loss in Elo. Use the knockout rate and baseline evaluation results to compare this run.
+
+## Compare damage rewards with normal and mixed starts
+
+Run both configurations from scratch with the same seed. The normal configuration uses the scene's starting positions. The mixed configuration starts every other completed round with the fighters 1.4 units apart. Both run for 50,000 steps and use the same reward rules.
+
+```powershell
+$conda = "$env:USERPROFILE\anaconda3\Scripts\conda.exe"
+& $conda run --no-capture-output -n adaptive-arena mlagents-learn training\self-play-damage-normal.yaml --run-id=arena-damage-normal-01 --seed=4107
+# After the normal run finishes, stop Play Mode and start the mixed run.
+& $conda run --no-capture-output -n adaptive-arena mlagents-learn training\self-play-damage-mixed.yaml --run-id=arena-damage-mixed-01 --seed=4107
+```
+
+Press **Play** in `SelfPlayArena.unity` when each trainer prompts you. Knockouts award +1 to the winner and −1 to the loser. Draws add zero. Every HP removed gives the attacker +0.003 and the defender −0.003. Compare hits per round and knockout rate under `Arena/Normal starts/` and `Arena/Close starts/`, then evaluate each final checkpoint against the same 100 Baseline Bot starts.
 
 ## Evaluate a frozen checkpoint
 

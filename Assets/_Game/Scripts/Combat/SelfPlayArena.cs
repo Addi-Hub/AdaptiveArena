@@ -9,13 +9,17 @@ public sealed class SelfPlayArena : MonoBehaviour
     [SerializeField] private SpriteRenderer floor;
 
     private const int DecisionPeriod = 5;
-    private const float KnockoutReward = 200f;
-    private const float DrawReward = -100f;
-    private const float HitReward = 1f;
+    private const float KnockoutReward = 1f;
+    private const float RewardPerDamage = 0.003f;
+    private const float CloseStartDistance = 1.4f;
     private Academy academy;
     private ArenaRound round;
     private SelfPlayFighterAgent firstAgent;
     private SelfPlayFighterAgent secondAgent;
+    private Rigidbody2D firstBody;
+    private Rigidbody2D secondBody;
+    private int completedRounds;
+    private bool closeStart;
     private int ticksUntilDecision;
     private int lightAttempts;
     private int heavyAttempts;
@@ -35,6 +39,8 @@ public sealed class SelfPlayArena : MonoBehaviour
 
         firstAgent = SelfPlayFighterAgent.Attach(first, second, round, floor.bounds, 0);
         secondAgent = SelfPlayFighterAgent.Attach(second, first, round, floor.bounds, 1);
+        firstBody = first.GetComponent<Rigidbody2D>();
+        secondBody = second.GetComponent<Rigidbody2D>();
         academy.AgentPreStep += RequestDecisions;
         academy.OnEnvironmentReset += ResetRound;
         round.RoundEnded += FinishRound;
@@ -63,17 +69,18 @@ public sealed class SelfPlayArena : MonoBehaviour
         else lightAttempts++;
     }
 
-    private void RewardFirstHit(bool isHeavy) => RewardHit(isHeavy, firstAgent, secondAgent);
+    private void RewardFirstHit(bool isHeavy, int damage) => RewardHit(isHeavy, damage, firstAgent, secondAgent);
 
-    private void RewardSecondHit(bool isHeavy) => RewardHit(isHeavy, secondAgent, firstAgent);
+    private void RewardSecondHit(bool isHeavy, int damage) => RewardHit(isHeavy, damage, secondAgent, firstAgent);
 
-    private void RewardHit(bool isHeavy, SelfPlayFighterAgent attacker, SelfPlayFighterAgent defender)
+    private void RewardHit(bool isHeavy, int damage, SelfPlayFighterAgent attacker, SelfPlayFighterAgent defender)
     {
         if (isHeavy) heavyHits++;
         else lightHits++;
 
-        attacker.AddReward(HitReward);
-        defender.AddReward(-HitReward);
+        float reward = damage * RewardPerDamage;
+        attacker.AddReward(reward);
+        defender.AddReward(-reward);
     }
 
     private void FinishRound(ArenaRound.Outcome outcome)
@@ -82,18 +89,23 @@ public sealed class SelfPlayArena : MonoBehaviour
         {
             ArenaRound.Outcome.PlayerWin => (KnockoutReward, -KnockoutReward),
             ArenaRound.Outcome.OpponentWin => (-KnockoutReward, KnockoutReward),
-            _ => (DrawReward, DrawReward)
+            _ => (0f, 0f)
         };
         var stats = academy.StatsRecorder;
         stats.Add("Arena/Light attempts per round", lightAttempts);
         stats.Add("Arena/Heavy attempts per round", heavyAttempts);
         stats.Add("Arena/Light hits per round", lightHits);
         stats.Add("Arena/Heavy hits per round", heavyHits);
-        stats.Add("Arena/Knockout rate", outcome == ArenaRound.Outcome.Timeout ? 0f : 1f);
+        float knockout = outcome == ArenaRound.Outcome.Timeout ? 0f : 1f;
+        stats.Add("Arena/Knockout rate", knockout);
+        string start = closeStart ? "Close starts" : "Normal starts";
+        stats.Add($"Arena/{start}/Hits per round", lightHits + heavyHits);
+        stats.Add($"Arena/{start}/Knockout rate", knockout);
         firstAgent.AddReward(firstReward);
         secondAgent.AddReward(secondReward);
         firstAgent.EndEpisode();
         secondAgent.EndEpisode();
+        completedRounds++;
         ResetRound();
     }
 
@@ -102,6 +114,15 @@ public sealed class SelfPlayArena : MonoBehaviour
         lightAttempts = heavyAttempts = lightHits = heavyHits = 0;
         ticksUntilDecision = 0;
         round.ResetRound();
+        closeStart = academy.EnvironmentParameters.GetWithDefault("alternate_close_starts", 0f) > 0.5f
+            && completedRounds % 2 == 1;
+        if (closeStart)
+        {
+            Vector2 midpoint = (firstBody.position + secondBody.position) * 0.5f;
+            Vector2 halfSpacing = Vector2.right * (CloseStartDistance * 0.5f);
+            firstBody.position = midpoint - halfSpacing;
+            secondBody.position = midpoint + halfSpacing;
+        }
     }
 
     private void OnDestroy()

@@ -1,6 +1,7 @@
 """Local Adaptive Arena trainer dashboard. Run with the ML-Agents Python environment."""
 import csv
 import hashlib
+import math
 import os
 from pathlib import Path
 import queue
@@ -16,6 +17,14 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
+PLAY_REQUEST = ROOT / "Library" / "ArenaTraining" / "play-request"
+REWARDS = {
+    "reward_win": ("Win", 1),
+    "reward_loss": ("Loss", -1),
+    "reward_draw": ("Draw", 0),
+    "reward_damage_dealt": ("Per HP dealt", 0.003),
+    "reward_damage_taken": ("Per HP taken", -0.003),
+}
 RUN_ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}")
 CHECKPOINT = re.compile(r"ArenaDuel-(\d+)\.pt")
 METRICS = {
@@ -45,7 +54,7 @@ def saved_step(folder):
     return max(steps, default=0)
 
 
-def run_config(folder, resume, starts, target, seed, rate, interval):
+def run_config(folder, resume, starts, target, seed, rate, interval, rewards=None):
     if resume:
         config = read_config(folder / "configuration.yaml")
         step = saved_step(folder)
@@ -63,6 +72,8 @@ def run_config(folder, resume, starts, target, seed, rate, interval):
         behavior = config["behaviors"]["ArenaDuel"]
         behavior["hyperparameters"]["learning_rate"] = rate
         behavior["checkpoint_interval"] = interval
+    if rewards is not None:
+        config["environment_parameters"] = {**(config.get("environment_parameters") or {}), **rewards}
     config["behaviors"]["ArenaDuel"]["max_steps"] = target
     return config
 
@@ -100,7 +111,9 @@ class Dashboard:
         self.seed = tk.StringVar(value="4107")
         self.rate = tk.StringVar(value="0.0003")
         self.interval = tk.StringVar(value="50000")
-        self.status = tk.StringVar(value="Ready. Start the trainer, then press Play in SelfPlayArena.")
+        self.rewards = {key: tk.StringVar(value=str(default)) for key, (_, default) in REWARDS.items()}
+        self.override_rewards = tk.BooleanVar()
+        self.status = tk.StringVar(value="Ready. Keep Unity open and start or resume a run.")
         self.progress_text = tk.StringVar(value="Select a run to view its stats.")
         self.baseline = tk.StringVar()
         self.values = {tag: tk.StringVar(value="—") for tag in METRICS}
@@ -112,8 +125,8 @@ class Dashboard:
 
     def build(self):
         self.window.title("Adaptive Arena | Training Dashboard")
-        self.window.geometry("900x680")
-        self.window.minsize(780, 620)
+        self.window.geometry("900x760")
+        self.window.minsize(780, 700)
         body = ttk.Frame(self.window, padding=16)
         body.pack(fill="both", expand=True)
         ttk.Label(body, text="Training Dashboard", font=("Segoe UI", 20, "bold")).pack(anchor="w")
@@ -133,6 +146,16 @@ class Dashboard:
                 field = ttk.Entry(settings, textvariable=value)
             field.grid(row=row * 2 + 1, column=column, sticky="ew", padx=(0, 16), pady=(0, 5))
             settings.columnconfigure(column, weight=1)
+        rewards = ttk.LabelFrame(body, text="Rewards for each fighter (signed values)", padding=10)
+        rewards.pack(fill="x", pady=(8, 0))
+        for column, (key, (label, _)) in enumerate(REWARDS.items()):
+            ttk.Label(rewards, text=label).grid(row=0, column=column, sticky="w")
+            ttk.Entry(rewards, textvariable=self.rewards[key], width=11).grid(
+                row=1, column=column, sticky="ew", padx=(0, 12)
+            )
+            rewards.columnconfigure(column, weight=1)
+        ttk.Checkbutton(rewards, text="Apply these rewards when resuming (otherwise keep saved rewards)",
+                        variable=self.override_rewards).grid(row=2, column=0, columnspan=5, sticky="w")
         controls = ttk.Frame(body)
         controls.pack(fill="x", pady=10)
         self.start_button = ttk.Button(controls, text="Start new run", command=lambda: self.launch(False))
@@ -189,7 +212,13 @@ class Dashboard:
             if target <= 0 or (not resume and not (0 <= seed < 2**32 and 0 < rate <= 1 and interval > 0)):
                 raise ValueError("Enter positive steps, a learning rate in (0, 1], and a seed from 0 to 4294967295.")
             folder = RESULTS / run_id
-            config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval)
+            rewards = None
+            if not resume or self.override_rewards.get():
+                rewards = {key: float(value.get()) for key, value in self.rewards.items()}
+                if any(not math.isfinite(value) or abs(value) > 1e6 for value in rewards.values()):
+                    raise ValueError("Rewards must be finite numbers between -1,000,000 and 1,000,000.")
+            config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval, rewards)
+            PLAY_REQUEST.unlink(missing_ok=True)
             staging = ROOT / "Library" / "ArenaTraining"
             staging.mkdir(parents=True, exist_ok=True)
             path = staging / f"{run_id}.yaml"
@@ -235,7 +264,14 @@ class Dashboard:
             self.append_log(line)
             if self.process is not None:
                 if "Listening on port" in line:
-                    self.status.set("Trainer listening. Open SelfPlayArena and press Play in Unity.")
+                    try:
+                        temporary = PLAY_REQUEST.with_suffix(".tmp")
+                        temporary.write_text("SelfPlayArena", encoding="utf-8")
+                        temporary.replace(PLAY_REQUEST)
+                        self.status.set("Trainer ready. Waiting for Unity to start SelfPlayArena…")
+                    except OSError as error:
+                        self.status.set("Could not signal Unity. Open SelfPlayArena and press Play.")
+                        self.append_log(f"Unity launch request failed: {error}\n")
                 elif "Connected to Unity environment" in line:
                     self.status.set("Training live. Stop Unity Play Mode to end the session.")
         if self.process is not None:
@@ -243,6 +279,10 @@ class Dashboard:
             if code is not None:
                 self.status.set("Trainer exited. Check the log and saved checkpoint." if code == 0
                                 else f"Trainer exited with code {code}. See trainer output.")
+                try:
+                    PLAY_REQUEST.unlink(missing_ok=True)
+                except OSError as error:
+                    self.append_log(f"Could not remove Unity launch request: {error}\n")
                 self.process = None
                 self.run_picker.configure(state="readonly")
                 self.start_button.configure(state="normal")

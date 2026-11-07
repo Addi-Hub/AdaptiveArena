@@ -4,7 +4,7 @@ using UnityEngine.SceneManagement;
 
 public sealed class ArenaMainMenu : MonoBehaviour
 {
-    private enum Page { Home, Bots, Training, Options }
+    private enum Page { Home, Bots, Options }
 
     public const string SceneName = "MainMenu";
     private const string VolumeKey = "Arena.MasterVolume";
@@ -53,7 +53,6 @@ public sealed class ArenaMainMenu : MonoBehaviour
         {
             case Page.Home: DrawHome(); break;
             case Page.Bots: DrawBots(); break;
-            case Page.Training: DrawTraining(); break;
             case Page.Options: DrawOptions(); break;
         }
 
@@ -66,7 +65,12 @@ public sealed class ArenaMainMenu : MonoBehaviour
     {
         Title("ADAPTIVE ARENA", "DUEL  /  TRAIN  /  IMPROVE");
         if (Button(209, "Play vs Bot")) page = Page.Bots;
-        if (Button(269, "Training")) page = Page.Training;
+#if UNITY_EDITOR
+        if (Button(269, "Training")) LaunchTrainingDashboard();
+#else
+        using (new GUI.DisabledScope(true))
+            Button(269, "Training (Unity Editor)");
+#endif
         if (Button(329, "Options")) page = Page.Options;
         if (Button(389, "Quit"))
         {
@@ -90,32 +94,8 @@ public sealed class ArenaMainMenu : MonoBehaviour
         GUI.Label(new Rect(200, 368, 500, 32), "Mixes light and heavy swings, dodges, and heals.", copy);
     }
 
-    private void DrawTraining()
-    {
-        Title("TRAINING", "REINFORCEMENT LEARNING");
-#if UNITY_EDITOR
-        if (Button(220, "Open Training Dashboard"))
-            LaunchTrainingDashboard();
-        GUI.Label(new Rect(90, 286, 720, 32), "Configure runs, resume checkpoints, and monitor stats.", copy);
-        GUI.Label(new Rect(90, 330, 720, 32), "Train in the SelfPlayArena scene from the Unity Editor.", copy);
-#else
-        GUI.Label(new Rect(90, 240, 720, 32), "Training is available in the Unity Editor.", copy);
-#endif
-    }
-
 #if UNITY_EDITOR
     [UnityEditor.MenuItem("Adaptive Arena/Training Dashboard")]
-    private static void OpenTrainingWorkspace()
-    {
-        if (!UnityEditor.EditorApplication.isPlaying)
-        {
-            if (!UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
-                return;
-            UnityEditor.SceneManagement.EditorSceneManager.OpenScene("Assets/_Game/Scenes/SelfPlayArena.unity");
-        }
-        LaunchTrainingDashboard();
-    }
-
     private static void LaunchTrainingDashboard()
     {
         const string interpreterKey = "AdaptiveArena.TrainingPython";
@@ -199,3 +179,85 @@ public sealed class ArenaMainMenu : MonoBehaviour
         GUI.color = previous;
     }
 }
+
+
+#if UNITY_EDITOR
+[UnityEditor.InitializeOnLoad]
+internal static class ArenaTrainingPlayMode
+{
+    private const string TrainingScene = "Assets/_Game/Scenes/SelfPlayArena.unity";
+    private const string OverrideActive = "AdaptiveArena.TrainingOverrideActive";
+    private const string PreviousScene = "AdaptiveArena.PreviousPlayScene";
+    private static readonly string Request = System.IO.Path.Combine(
+        System.IO.Path.GetDirectoryName(Application.dataPath), "Library", "ArenaTraining", "play-request");
+    private static double nextPoll;
+
+    static ArenaTrainingPlayMode()
+    {
+        UnityEditor.EditorApplication.update += Poll;
+        UnityEditor.EditorApplication.playModeStateChanged += RestoreStartScene;
+    }
+
+    private static void Poll()
+    {
+        double now = UnityEditor.EditorApplication.timeSinceStartup;
+        if (now < nextPoll)
+            return;
+        nextPoll = now + 0.25;
+        if (UnityEditor.EditorApplication.isCompiling || UnityEditor.EditorApplication.isUpdating ||
+            !System.IO.File.Exists(Request))
+            return;
+
+        try
+        {
+            if (System.DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(Request) > System.TimeSpan.FromSeconds(60))
+            {
+                System.IO.File.Delete(Request);
+                return;
+            }
+
+            if (UnityEditor.EditorApplication.isPlaying)
+            {
+                string scene = SceneManager.GetActiveScene().name;
+                if (scene == ArenaMainMenu.SceneName || scene == "SelfPlayArena")
+                    UnityEditor.EditorApplication.isPlaying = false;
+                return;
+            }
+
+            if (UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode)
+                return;
+
+            var sceneAsset = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(TrainingScene);
+            System.IO.File.Delete(Request);
+            if (sceneAsset == null)
+            {
+                Debug.LogError($"Adaptive Arena could not find {TrainingScene}.");
+                return;
+            }
+
+            var previous = UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene;
+            UnityEditor.SessionState.SetString(PreviousScene, UnityEditor.AssetDatabase.GetAssetPath(previous) ?? "");
+            UnityEditor.SessionState.SetBool(OverrideActive, true);
+            UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene = sceneAsset;
+            UnityEditor.EditorApplication.EnterPlaymode();
+        }
+        catch (System.IO.IOException)
+        {
+            // The dashboard may have removed the request after its trainer exited.
+        }
+    }
+
+    private static void RestoreStartScene(UnityEditor.PlayModeStateChange state)
+    {
+        if (state != UnityEditor.PlayModeStateChange.EnteredEditMode ||
+            !UnityEditor.SessionState.GetBool(OverrideActive, false))
+            return;
+
+        string previous = UnityEditor.SessionState.GetString(PreviousScene, "");
+        UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene = string.IsNullOrEmpty(previous)
+            ? null : UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(previous);
+        UnityEditor.SessionState.EraseBool(OverrideActive);
+        UnityEditor.SessionState.EraseString(PreviousScene);
+    }
+}
+#endif

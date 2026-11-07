@@ -9,8 +9,6 @@ public sealed class SelfPlayArena : MonoBehaviour
     [SerializeField] private SpriteRenderer floor;
 
     private const int DecisionPeriod = 5;
-    private const float KnockoutReward = 1f;
-    private const float RewardPerDamage = 0.003f;
     private const float CloseStartDistance = 1.4f;
     private Academy academy;
     private ArenaRound round;
@@ -78,18 +76,22 @@ public sealed class SelfPlayArena : MonoBehaviour
         if (isHeavy) heavyHits++;
         else lightHits++;
 
-        float reward = damage * RewardPerDamage;
-        attacker.AddReward(reward);
-        defender.AddReward(-reward);
+        var rewards = academy.EnvironmentParameters;
+        attacker.AddReward(damage * rewards.GetWithDefault("reward_damage_dealt", 0.003f));
+        defender.AddReward(damage * rewards.GetWithDefault("reward_damage_taken", -0.003f));
     }
 
     private void FinishRound(ArenaRound.Outcome outcome)
     {
+        var rewards = academy.EnvironmentParameters;
+        float win = rewards.GetWithDefault("reward_win", 1f);
+        float loss = rewards.GetWithDefault("reward_loss", -1f);
+        float draw = rewards.GetWithDefault("reward_draw", 0f);
         (float firstReward, float secondReward) = outcome switch
         {
-            ArenaRound.Outcome.PlayerWin => (KnockoutReward, -KnockoutReward),
-            ArenaRound.Outcome.OpponentWin => (-KnockoutReward, KnockoutReward),
-            _ => (0f, 0f)
+            ArenaRound.Outcome.PlayerWin => (win, loss),
+            ArenaRound.Outcome.OpponentWin => (loss, win),
+            _ => (draw, draw)
         };
         var stats = academy.StatsRecorder;
         stats.Add("Arena/Light attempts per round", lightAttempts);

@@ -10,6 +10,7 @@ public sealed class TrainingTarget : MonoBehaviour
     private MeleeFighter fighter;
     private MeleeFighter playerFighter;
     private Rigidbody2D body;
+    private ArenaRound round;
     private float nextAttackAt;
     private bool baselineBot;
     private bool nextAttackIsHeavy;
@@ -18,8 +19,18 @@ public sealed class TrainingTarget : MonoBehaviour
     {
         fighter = GetComponent<MeleeFighter>();
         playerFighter = player.GetComponent<MeleeFighter>();
+        round = player.GetComponent<ArenaRound>();
         body = GetComponent<Rigidbody2D>();
         baselineBot = ArenaMainMenu.UseBaselineBot;
+        ResetTactics();
+    }
+
+    private void OnEnable() => round.RoundReset += ResetTactics;
+    private void OnDisable() => round.RoundReset -= ResetTactics;
+
+    private void ResetTactics()
+    {
+        nextAttackAt = 0f;
         nextAttackIsHeavy = !baselineBot;
     }
 

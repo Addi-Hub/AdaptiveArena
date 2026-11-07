@@ -169,3 +169,7 @@ Packages/packages-lock.json linguist-generated
 
 # Exceptions for .asset files such as lightning pre-baking
 LightingData.asset     binary
+
+# Keep the two tiny prototype sprites in Git.
+Assets/_Game/Art/ArenaSquare.png -filter -diff -merge -text
+Assets/_Game/Art/ArenaCircle.png -filter -diff -merge -text

@@ -185,6 +185,8 @@ public sealed class ArenaMainMenu : MonoBehaviour
 [UnityEditor.InitializeOnLoad]
 internal static class ArenaTrainingPlayMode
 {
+    private const string AimObservation = "AdaptiveArena.AimObservation";
+    internal static bool ObserveAim => UnityEditor.SessionState.GetBool(AimObservation, false);
     private const string ReachObservation = "AdaptiveArena.ReachObservation";
     internal static bool ObserveReach => UnityEditor.SessionState.GetBool(ReachObservation, false);
     private const string TrainingScene = "Assets/_Game/Scenes/SelfPlayArena.unity";
@@ -280,7 +282,9 @@ internal static class ArenaTrainingPlayMode
             if (evaluate && !PrepareEvaluation(requestValue))
                 return;
 
-            UnityEditor.SessionState.SetBool(ReachObservation, !evaluate && requestValue == "SelfPlayArena:reach");
+            UnityEditor.SessionState.SetBool(ReachObservation, !evaluate && (requestValue == "SelfPlayArena:reach" || requestValue == "SelfPlayArena:reach:aim"));
+            UnityEditor.SessionState.SetBool(AimObservation,
+                !evaluate && (requestValue == "SelfPlayArena:aim" || requestValue == "SelfPlayArena:reach:aim"));
             var previous = UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene;
             UnityEditor.SessionState.SetString(PreviousScene, UnityEditor.AssetDatabase.GetAssetPath(previous) ?? "");
             UnityEditor.SessionState.SetBool(OverrideActive, true);
@@ -333,6 +337,7 @@ internal static class ArenaTrainingPlayMode
         UnityEditor.SessionState.EraseBool(OverrideActive);
         UnityEditor.SessionState.EraseString(PreviousScene);
         UnityEditor.SessionState.EraseBool(ReachObservation);
+        UnityEditor.SessionState.EraseBool(AimObservation);
 
         if (IsDashboardEvaluation)
         {

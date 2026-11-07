@@ -9,6 +9,7 @@ public sealed class SelfPlayFighterAgent : Agent
 {
     private const int ObservationSize = 25;
     private bool observeReach;
+    private bool observeAim;
 
     private MeleeFighter fighter;
     private MeleeFighter opponent;
@@ -19,7 +20,7 @@ public sealed class SelfPlayFighterAgent : Agent
     private Vector2 movement;
 
     public static SelfPlayFighterAgent Attach(MeleeFighter fighter, MeleeFighter opponent,
-        ArenaRound round, Bounds bounds, int team, ModelAsset model = null, bool observeReach = false)
+        ArenaRound round, Bounds bounds, int team, ModelAsset model = null, bool observeReach = false, bool observeAim = false)
     {
         if (model != null)
         {
@@ -27,7 +28,9 @@ public sealed class SelfPlayFighterAgent : Agent
             {
                 if (input.name == "obs_0" && input.shape.rank == 2)
                 {
-                    observeReach = input.shape.Get(1) == ObservationSize + 1;
+                    int extraInputs = input.shape.Get(1) - ObservationSize;
+                    observeReach = extraInputs == 1 || extraInputs == 3;
+                    observeAim = extraInputs == 2 || extraInputs == 3;
                     break;
                 }
             }
@@ -36,7 +39,7 @@ public sealed class SelfPlayFighterAgent : Agent
         var parameters = fighter.gameObject.AddComponent<BehaviorParameters>();
         parameters.BehaviorName = "ArenaDuel";
         parameters.TeamId = team;
-        parameters.BrainParameters.VectorObservationSize = ObservationSize + (observeReach ? 1 : 0);
+        parameters.BrainParameters.VectorObservationSize = ObservationSize + (observeReach ? 1 : 0) + (observeAim ? 2 : 0);
         parameters.BrainParameters.ActionSpec = new ActionSpec(4, new[] { 5 });
         if (model != null)
         {
@@ -47,6 +50,7 @@ public sealed class SelfPlayFighterAgent : Agent
 
         var agent = fighter.gameObject.AddComponent<SelfPlayFighterAgent>();
         agent.observeReach = observeReach;
+        agent.observeAim = observeAim;
         agent.Configure(opponent, round, bounds);
         return agent;
     }
@@ -77,6 +81,13 @@ public sealed class SelfPlayFighterAgent : Agent
         if (observeReach)
             sensor.AddObservation(Vector2.Distance(body.position, opponentBody.position)
                 / Mathf.Max(0.01f, fighter.MaxAttackReach));
+        if (observeAim)
+        {
+            Vector2 toOpponent = opponentBody.position - body.position;
+            float angle = Vector2.SignedAngle(fighter.FacingDirection, toOpponent) * Mathf.Deg2Rad;
+            sensor.AddObservation(Mathf.Sin(angle));
+            sensor.AddObservation(Mathf.Cos(angle));
+        }
     }
 
     private static void ObserveFighter(VectorSensor sensor, MeleeFighter target)

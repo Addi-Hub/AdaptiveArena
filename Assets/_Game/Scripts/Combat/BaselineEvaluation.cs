@@ -39,14 +39,18 @@ public sealed class BaselineEvaluation : MonoBehaviour
     private void Start()
     {
         round = GetComponent<ArenaRound>();
+        string checkpointPath = CheckpointPath;
         ModelAsset model = null;
 #if UNITY_EDITOR
-        model = UnityEditor.AssetDatabase.LoadAssetAtPath<ModelAsset>(CheckpointPath);
+        if (ArenaTrainingPlayMode.IsDashboardEvaluation)
+            checkpointPath = ArenaTrainingPlayMode.EvaluationModel;
+        model = UnityEditor.AssetDatabase.LoadAssetAtPath<ModelAsset>(checkpointPath);
 #endif
         if (model == null)
         {
             round.enabled = false;
-            Debug.LogError($"Open this scene in the Unity Editor and import the checkpoint at {CheckpointPath}.");
+            Debug.LogError($"Open this scene in the Unity Editor and import the checkpoint at {checkpointPath}.");
+            ExitDashboardPlayMode();
             return;
         }
 
@@ -55,11 +59,12 @@ public sealed class BaselineEvaluation : MonoBehaviour
         {
             round.enabled = false;
             Debug.LogError("Stop mlagents-learn before evaluating a frozen checkpoint.");
+            ExitDashboardPlayMode();
             return;
         }
 
         string directory = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "results", "baseline-evaluations"));
-        string checkpointFile = Path.Combine(Application.dataPath, "..", CheckpointPath);
+        string checkpointFile = Path.Combine(Application.dataPath, "..", checkpointPath);
         using (var sha = SHA256.Create())
             checkpointHash = BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(checkpointFile))).Replace("-", "");
 
@@ -77,6 +82,14 @@ public sealed class BaselineEvaluation : MonoBehaviour
         Time.timeScale = simulationSpeed;
         PrepareMatch();
         Debug.Log($"Evaluating {model.name} against Baseline Bot for {2 * pairs} matches. CSV: {outputPath}");
+    }
+
+    private static void ExitDashboardPlayMode()
+    {
+#if UNITY_EDITOR
+        if (ArenaTrainingPlayMode.IsDashboardEvaluation)
+            UnityEditor.EditorApplication.ExitPlaymode();
+#endif
     }
 
     private void RequestDecision(int step)
@@ -132,6 +145,10 @@ public sealed class BaselineEvaluation : MonoBehaviour
         Debug.Log($"Baseline evaluation complete. {wins} wins, {losses} losses, {draws} draws. "
             + $"Win rate {winRate.ToString("P1", CultureInfo.InvariantCulture)}. CSV: {outputPath}");
         StopEvaluation();
+#if UNITY_EDITOR
+        if (ArenaTrainingPlayMode.IsDashboardEvaluation)
+            ArenaTrainingPlayMode.FinishDashboardEvaluation();
+#endif
     }
 
     private void StopEvaluation()

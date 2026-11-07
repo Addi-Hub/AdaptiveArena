@@ -192,7 +192,22 @@ internal static class ArenaTrainingPlayMode
         System.IO.Path.GetDirectoryName(Application.dataPath), "Library", "ArenaTraining", "play-request");
     private static readonly string StopRequest = System.IO.Path.Combine(
         System.IO.Path.GetDirectoryName(Request), "stop-request");
+    private static readonly string EvaluationRequest = System.IO.Path.Combine(
+        System.IO.Path.GetDirectoryName(Request), "evaluation-request");
+    private static readonly string EvaluationStatus = System.IO.Path.Combine(
+        System.IO.Path.GetDirectoryName(Request), "evaluation-status");
+    internal const string EvaluationModel = "Assets/_Game/LocalEvaluation/DashboardDuel.onnx";
+    private const string EvaluationScene = "Assets/_Game/Scenes/BaselineEvaluation.unity";
+    private const string EvaluationActive = "AdaptiveArena.EvaluationActive";
+    private const string EvaluationComplete = "AdaptiveArena.EvaluationComplete";
+    internal static bool IsDashboardEvaluation => UnityEditor.SessionState.GetBool(EvaluationActive, false);
     private static double nextPoll;
+
+    internal static void FinishDashboardEvaluation()
+    {
+        UnityEditor.SessionState.SetBool(EvaluationComplete, true);
+        UnityEditor.EditorApplication.ExitPlaymode();
+    }
 
     static ArenaTrainingPlayMode()
     {
@@ -224,19 +239,23 @@ internal static class ArenaTrainingPlayMode
                 }
             }
 
-            if (!System.IO.File.Exists(Request))
+            bool evaluate = System.IO.File.Exists(EvaluationRequest);
+            string request = evaluate ? EvaluationRequest : Request;
+            if (!System.IO.File.Exists(request))
                 return;
 
-            if (System.DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(Request) > System.TimeSpan.FromSeconds(60))
+            if (System.DateTime.UtcNow - System.IO.File.GetLastWriteTimeUtc(request) > System.TimeSpan.FromSeconds(60))
             {
-                System.IO.File.Delete(Request);
+                System.IO.File.Delete(request);
+                if (evaluate)
+                    System.IO.File.WriteAllText(EvaluationStatus, "Evaluation expired before Unity could start it.");
                 return;
             }
 
             if (UnityEditor.EditorApplication.isPlaying)
             {
                 string scene = SceneManager.GetActiveScene().name;
-                if (scene == ArenaMainMenu.SceneName || scene == "SelfPlayArena")
+                if (scene == ArenaMainMenu.SceneName || (!evaluate && scene == "SelfPlayArena"))
                     UnityEditor.EditorApplication.isPlaying = false;
                 return;
             }
@@ -244,13 +263,20 @@ internal static class ArenaTrainingPlayMode
             if (UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode)
                 return;
 
-            var sceneAsset = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(TrainingScene);
-            System.IO.File.Delete(Request);
+            string scenePath = evaluate ? EvaluationScene : TrainingScene;
+            var sceneAsset = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(scenePath);
+            string runId = evaluate ? System.IO.File.ReadAllText(request) : "";
+            System.IO.File.Delete(request);
             if (sceneAsset == null)
             {
-                Debug.LogError($"Adaptive Arena could not find {TrainingScene}.");
+                Debug.LogError($"Adaptive Arena could not find {scenePath}.");
+                if (evaluate)
+                    System.IO.File.WriteAllText(EvaluationStatus, "Evaluation scene missing.");
                 return;
             }
+
+            if (evaluate && !PrepareEvaluation(runId))
+                return;
 
             var previous = UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene;
             UnityEditor.SessionState.SetString(PreviousScene, UnityEditor.AssetDatabase.GetAssetPath(previous) ?? "");
@@ -261,6 +287,34 @@ internal static class ArenaTrainingPlayMode
         catch (System.IO.IOException)
         {
             // The dashboard may have removed the request after its trainer exited.
+        }
+    }
+
+    private static bool PrepareEvaluation(string runId)
+    {
+        try
+        {
+            if (!System.Text.RegularExpressions.Regex.IsMatch(runId, @"\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\z"))
+                throw new System.IO.IOException("Invalid run ID.");
+
+            string root = System.IO.Path.GetDirectoryName(Application.dataPath);
+            string source = System.IO.Path.Combine(root, "results", runId, "ArenaDuel.onnx");
+            string target = System.IO.Path.Combine(root, EvaluationModel);
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target));
+            System.IO.File.Copy(source, target, true);
+            UnityEditor.AssetDatabase.ImportAsset(EvaluationModel, UnityEditor.ImportAssetOptions.ForceSynchronousImport);
+            if (UnityEditor.AssetDatabase.LoadAssetAtPath<Unity.InferenceEngine.ModelAsset>(EvaluationModel) == null)
+                throw new System.IO.IOException("Unity could not import the model.");
+
+            System.IO.File.WriteAllText(EvaluationStatus, "Evaluating against Baseline Bot...");
+            UnityEditor.SessionState.SetBool(EvaluationActive, true);
+            UnityEditor.SessionState.EraseBool(EvaluationComplete);
+            return true;
+        }
+        catch (System.IO.IOException error)
+        {
+            System.IO.File.WriteAllText(EvaluationStatus, $"Evaluation could not start. {error.Message}");
+            return false;
         }
     }
 
@@ -275,6 +329,15 @@ internal static class ArenaTrainingPlayMode
             ? null : UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(previous);
         UnityEditor.SessionState.EraseBool(OverrideActive);
         UnityEditor.SessionState.EraseString(PreviousScene);
+
+        if (IsDashboardEvaluation)
+        {
+            bool complete = UnityEditor.SessionState.GetBool(EvaluationComplete, false);
+            UnityEditor.SessionState.EraseBool(EvaluationActive);
+            UnityEditor.SessionState.EraseBool(EvaluationComplete);
+            System.IO.File.WriteAllText(EvaluationStatus,
+                complete ? "Baseline evaluation complete." : "Baseline evaluation ended early.");
+        }
     }
 }
 #endif

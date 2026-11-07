@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -19,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 PLAY_REQUEST = ROOT / "Library" / "ArenaTraining" / "play-request"
 STOP_REQUEST = PLAY_REQUEST.with_name("stop-request")
+EVALUATION_REQUEST = PLAY_REQUEST.with_name("evaluation-request")
+EVALUATION_STATUS = PLAY_REQUEST.with_name("evaluation-status")
 REWARDS = {
     "reward_win": ("Win", 1),
     "reward_loss": ("Loss", -1),
@@ -102,6 +105,7 @@ class Dashboard:
     def __init__(self, window):
         self.window = window
         self.process = None
+        self.evaluation_started = None
         self.lines = queue.Queue()
         self.accumulator = None
         self.selected = None
@@ -171,6 +175,9 @@ class Dashboard:
         self.resume_button.pack(side="left", padx=8)
         self.stop_button = ttk.Button(controls, text="Stop Training", command=self.stop, state="disabled")
         self.stop_button.pack(side="left")
+        self.evaluate_button = ttk.Button(body, text="Evaluate selected run vs Baseline Bot",
+                                          command=self.evaluate, state="disabled")
+        self.evaluate_button.pack(anchor="w", pady=(0, 8))
         stats = ttk.LabelFrame(body, text="Latest reported statistics", padding=10)
         stats.pack(fill="x")
         ttk.Label(stats, textvariable=self.progress_text).grid(row=0, column=0, columnspan=4, sticky="w")
@@ -202,8 +209,52 @@ class Dashboard:
             self.accumulator = None
             self.baseline_files = None
             self.baseline.set("")
-        enabled = self.process is None and bool(self.selected)
-        self.resume_button.configure(state="normal" if enabled else "disabled")
+        idle = self.process is None and self.evaluation_started is None
+        self.start_button.configure(state="normal" if idle else "disabled")
+        self.resume_button.configure(state="normal" if idle and self.selected else "disabled")
+        has_export = bool(self.selected) and (RESULTS / self.selected / "ArenaDuel.onnx").is_file()
+        self.evaluate_button.configure(state="normal" if idle and has_export else "disabled")
+
+    def evaluate(self):
+        run_id = self.run.get()
+        if self.process is not None or self.evaluation_started is not None:
+            return
+        try:
+            if not RUN_ID.fullmatch(run_id) or not (RESULTS / run_id / "ArenaDuel.onnx").is_file():
+                raise ValueError("Select a run with an exported model.")
+            EVALUATION_REQUEST.parent.mkdir(parents=True, exist_ok=True)
+            EVALUATION_STATUS.unlink(missing_ok=True)
+            temporary = EVALUATION_REQUEST.with_suffix(".tmp")
+            temporary.write_text(run_id, encoding="utf-8")
+            temporary.replace(EVALUATION_REQUEST)
+        except (OSError, ValueError) as error:
+            messagebox.showerror("Could not request evaluation", str(error), parent=self.window)
+            return
+        self.evaluation_started = time.monotonic()
+        self.run_picker.configure(state="disabled")
+        self.select_run()
+        self.status.set(f"Waiting for Unity to evaluate {run_id}…")
+
+    def poll_evaluation(self):
+        if self.evaluation_started is None:
+            return
+        try:
+            status = EVALUATION_STATUS.read_text(encoding="utf-8") if EVALUATION_STATUS.is_file() else ""
+            age = time.monotonic() - self.evaluation_started
+            if status.startswith("Evaluating"):
+                self.status.set(status)
+                return
+            if not status:
+                if age < 65:
+                    return
+                EVALUATION_REQUEST.unlink(missing_ok=True)
+                status = "Unity did not start evaluation. Keep the project open and try again."
+        except OSError:
+            return
+        self.status.set(status)
+        self.evaluation_started = None
+        self.run_picker.configure(state="readonly")
+        self.select_run()
 
     def launch(self, resume):
         run_id = self.run.get() if resume else self.name.get().strip()
@@ -309,6 +360,7 @@ class Dashboard:
                 self.run_picker.configure(state="readonly")
                 self.start_button.configure(state="normal")
                 self.refresh_runs()
+        self.poll_evaluation()
         self.window.after(200, self.poll)
 
     def refresh_stats(self):
@@ -351,6 +403,10 @@ class Dashboard:
             self.baseline_files = stamp
 
     def close(self):
+        if self.evaluation_started is not None:
+            messagebox.showinfo("Evaluation in progress", "Wait for evaluation or stop Unity Play Mode.",
+                                parent=self.window)
+            return
         if self.process is not None and self.process.poll() is None:
             messagebox.showinfo("Trainer running", "Use Stop Training or wait for the trainer to exit.", parent=self.window)
             return

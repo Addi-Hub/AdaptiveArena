@@ -158,6 +158,16 @@ public sealed class SelfPlayArena : MonoBehaviour
             firstBody.position = midpoint - halfSpacing;
             secondBody.position = midpoint + halfSpacing;
         }
+
+        // Each team gets both distances on each side over four rounds.
+        bool swapSides = academy.EnvironmentParameters.GetWithDefault("alternate_start_sides", 0f) > 0.5f
+            && completedRounds % 4 >= 2;
+        if (swapSides)
+        {
+            (firstBody.position, secondBody.position) = (secondBody.position, firstBody.position);
+            first.Face(secondBody.position - firstBody.position);
+            second.Face(firstBody.position - secondBody.position);
+        }
     }
 
     private void OnDestroy()

@@ -59,7 +59,7 @@ def saved_step(folder):
     return max(steps, default=0)
 
 
-def run_config(folder, resume, starts, target, seed, rate, interval, rewards=None, arenas=1):
+def run_config(folder, resume, starts, target, seed, rate, interval, rewards=None, arenas=1, swap_sides=False):
     if resume:
         config = read_config(folder / "configuration.yaml")
         step = saved_step(folder)
@@ -77,6 +77,8 @@ def run_config(folder, resume, starts, target, seed, rate, interval, rewards=Non
         behavior = config["behaviors"]["ArenaDuel"]
         behavior["hyperparameters"]["learning_rate"] = rate
         behavior["checkpoint_interval"] = interval
+        if swap_sides:
+            config.setdefault("environment_parameters", {})["alternate_start_sides"] = 1.0
     config.setdefault("env_settings", {})["num_areas"] = arenas
     if rewards is not None:
         config["environment_parameters"] = {**(config.get("environment_parameters") or {}), **rewards}
@@ -178,6 +180,7 @@ class Dashboard:
         self.run = tk.StringVar()
         self.name = tk.StringVar(value="arena-damage-500k-01")
         self.starts = tk.StringVar(value="normal")
+        self.swap_sides = tk.BooleanVar()
         self.target = tk.StringVar(value="500000")
         self.seed = tk.StringVar(value="4107")
         self.rate = tk.StringVar(value="0.0003")
@@ -218,6 +221,8 @@ class Dashboard:
                 field = ttk.Entry(settings, textvariable=value)
             field.grid(row=row * 2 + 1, column=column, sticky="ew", padx=(0, 16), pady=(0, 5))
             settings.columnconfigure(column, weight=1)
+        ttk.Checkbutton(settings, text="Swap starting sides every two rounds (new runs)",
+                        variable=self.swap_sides).grid(row=6, column=0, columnspan=3, sticky="w")
         rewards = ttk.LabelFrame(body, text="Rewards for each fighter (signed values)", padding=10)
         rewards.pack(fill="x", pady=(8, 0))
         for column, (key, (label, _)) in enumerate(REWARDS.items()):
@@ -341,7 +346,8 @@ class Dashboard:
                 rewards = {key: float(value.get()) for key, value in self.rewards.items()}
                 if any(not math.isfinite(value) or abs(value) > 1e6 for value in rewards.values()):
                     raise ValueError("Rewards must be finite numbers between -1,000,000 and 1,000,000.")
-            config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval, rewards, arenas)
+            config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval,
+                                rewards, arenas, self.swap_sides.get())
             PLAY_REQUEST.unlink(missing_ok=True)
             STOP_REQUEST.unlink(missing_ok=True)
             staging = ROOT / "Library" / "ArenaTraining"

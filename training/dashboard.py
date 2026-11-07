@@ -59,7 +59,7 @@ def saved_step(folder):
     return max(steps, default=0)
 
 
-def run_config(folder, resume, starts, target, seed, rate, interval, rewards=None, arenas=1, swap_sides=False):
+def run_config(folder, resume, starts, target, seed, rate, interval, rewards=None, arenas=1, swap_sides=False, observe_reach=False):
     if resume:
         config = read_config(folder / "configuration.yaml")
         step = saved_step(folder)
@@ -77,6 +77,8 @@ def run_config(folder, resume, starts, target, seed, rate, interval, rewards=Non
         behavior = config["behaviors"]["ArenaDuel"]
         behavior["hyperparameters"]["learning_rate"] = rate
         behavior["checkpoint_interval"] = interval
+        if observe_reach:
+            config.setdefault("environment_parameters", {})["observe_attack_reach"] = 1.0
         if swap_sides:
             config.setdefault("environment_parameters", {})["alternate_start_sides"] = 1.0
     config.setdefault("env_settings", {})["num_areas"] = arenas
@@ -181,6 +183,7 @@ class Dashboard:
         self.name = tk.StringVar(value="arena-damage-500k-01")
         self.starts = tk.StringVar(value="normal")
         self.swap_sides = tk.BooleanVar()
+        self.observe_reach = tk.BooleanVar()
         self.target = tk.StringVar(value="500000")
         self.seed = tk.StringVar(value="4107")
         self.rate = tk.StringVar(value="0.0003")
@@ -223,6 +226,8 @@ class Dashboard:
             settings.columnconfigure(column, weight=1)
         ttk.Checkbutton(settings, text="Swap starting sides every two rounds (new runs)",
                         variable=self.swap_sides).grid(row=6, column=0, columnspan=3, sticky="w")
+        ttk.Checkbutton(settings, text="Observe distance relative to attack reach (new runs)",
+                        variable=self.observe_reach).grid(row=7, column=0, columnspan=3, sticky="w")
         rewards = ttk.LabelFrame(body, text="Rewards for each fighter (signed values)", padding=10)
         rewards.pack(fill="x", pady=(8, 0))
         for column, (key, (label, _)) in enumerate(REWARDS.items()):
@@ -347,7 +352,11 @@ class Dashboard:
                 if any(not math.isfinite(value) or abs(value) > 1e6 for value in rewards.values()):
                     raise ValueError("Rewards must be finite numbers between -1,000,000 and 1,000,000.")
             config = run_config(folder, resume, self.starts.get(), target, seed, rate, interval,
-                                rewards, arenas, self.swap_sides.get())
+                                rewards, arenas, self.swap_sides.get(), self.observe_reach.get())
+            # The exported run configuration serializes constant parameters as curricula.
+            reach = (config.get("environment_parameters") or {}).get("observe_attack_reach", 0)
+            if isinstance(reach, dict):
+                reach = reach["curriculum"][0]["value"]["sampler_parameters"]["value"]
             PLAY_REQUEST.unlink(missing_ok=True)
             STOP_REQUEST.unlink(missing_ok=True)
             staging = ROOT / "Library" / "ArenaTraining"
@@ -370,6 +379,7 @@ class Dashboard:
             messagebox.showerror("Could not start trainer", str(error), parent=self.window)
             return
         self.active_arenas = arenas
+        self.play_request_value = "SelfPlayArena:reach" if reach > 0.5 else "SelfPlayArena"
         self.run.set(run_id)
         self.select_run()
         self.run_picker.configure(state="disabled")
@@ -408,7 +418,7 @@ class Dashboard:
                 if "Listening on port" in line:
                     try:
                         temporary = PLAY_REQUEST.with_suffix(".tmp")
-                        temporary.write_text("SelfPlayArena", encoding="utf-8")
+                        temporary.write_text(self.play_request_value, encoding="utf-8")
                         temporary.replace(PLAY_REQUEST)
                         self.status.set("Trainer ready. Waiting for Unity to start SelfPlayArenaâ€¦")
                     except OSError as error:

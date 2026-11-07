@@ -7,7 +7,8 @@ using UnityEngine;
 
 public sealed class SelfPlayFighterAgent : Agent
 {
-    public const int ObservationSize = 25;
+    private const int ObservationSize = 25;
+    private bool observeReach;
 
     private MeleeFighter fighter;
     private MeleeFighter opponent;
@@ -18,12 +19,24 @@ public sealed class SelfPlayFighterAgent : Agent
     private Vector2 movement;
 
     public static SelfPlayFighterAgent Attach(MeleeFighter fighter, MeleeFighter opponent,
-        ArenaRound round, Bounds bounds, int team, ModelAsset model = null)
+        ArenaRound round, Bounds bounds, int team, ModelAsset model = null, bool observeReach = false)
     {
+        if (model != null)
+        {
+            foreach (var input in ModelLoader.Load(model).inputs)
+            {
+                if (input.name == "obs_0" && input.shape.rank == 2)
+                {
+                    observeReach = input.shape.Get(1) == ObservationSize + 1;
+                    break;
+                }
+            }
+        }
+
         var parameters = fighter.gameObject.AddComponent<BehaviorParameters>();
         parameters.BehaviorName = "ArenaDuel";
         parameters.TeamId = team;
-        parameters.BrainParameters.VectorObservationSize = ObservationSize;
+        parameters.BrainParameters.VectorObservationSize = ObservationSize + (observeReach ? 1 : 0);
         parameters.BrainParameters.ActionSpec = new ActionSpec(4, new[] { 5 });
         if (model != null)
         {
@@ -33,6 +46,7 @@ public sealed class SelfPlayFighterAgent : Agent
         }
 
         var agent = fighter.gameObject.AddComponent<SelfPlayFighterAgent>();
+        agent.observeReach = observeReach;
         agent.Configure(opponent, round, bounds);
         return agent;
     }
@@ -60,6 +74,9 @@ public sealed class SelfPlayFighterAgent : Agent
         ObserveFighter(sensor, fighter);
         ObserveFighter(sensor, opponent);
         sensor.AddObservation(round.TimeFractionRemaining);
+        if (observeReach)
+            sensor.AddObservation(Vector2.Distance(body.position, opponentBody.position)
+                / Mathf.Max(0.01f, fighter.MaxAttackReach));
     }
 
     private static void ObserveFighter(VectorSensor sensor, MeleeFighter target)

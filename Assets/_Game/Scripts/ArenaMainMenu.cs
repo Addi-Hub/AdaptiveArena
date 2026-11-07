@@ -185,6 +185,8 @@ public sealed class ArenaMainMenu : MonoBehaviour
 [UnityEditor.InitializeOnLoad]
 internal static class ArenaTrainingPlayMode
 {
+    private const string ReachObservation = "AdaptiveArena.ReachObservation";
+    internal static bool ObserveReach => UnityEditor.SessionState.GetBool(ReachObservation, false);
     private const string TrainingScene = "Assets/_Game/Scenes/SelfPlayArena.unity";
     private const string OverrideActive = "AdaptiveArena.TrainingOverrideActive";
     private const string PreviousScene = "AdaptiveArena.PreviousPlayScene";
@@ -265,7 +267,7 @@ internal static class ArenaTrainingPlayMode
 
             string scenePath = evaluate ? EvaluationScene : TrainingScene;
             var sceneAsset = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(scenePath);
-            string runId = evaluate ? System.IO.File.ReadAllText(request) : "";
+            string requestValue = System.IO.File.ReadAllText(request);
             System.IO.File.Delete(request);
             if (sceneAsset == null)
             {
@@ -275,9 +277,10 @@ internal static class ArenaTrainingPlayMode
                 return;
             }
 
-            if (evaluate && !PrepareEvaluation(runId))
+            if (evaluate && !PrepareEvaluation(requestValue))
                 return;
 
+            UnityEditor.SessionState.SetBool(ReachObservation, !evaluate && requestValue == "SelfPlayArena:reach");
             var previous = UnityEditor.SceneManagement.EditorSceneManager.playModeStartScene;
             UnityEditor.SessionState.SetString(PreviousScene, UnityEditor.AssetDatabase.GetAssetPath(previous) ?? "");
             UnityEditor.SessionState.SetBool(OverrideActive, true);
@@ -329,6 +332,7 @@ internal static class ArenaTrainingPlayMode
             ? null : UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(previous);
         UnityEditor.SessionState.EraseBool(OverrideActive);
         UnityEditor.SessionState.EraseString(PreviousScene);
+        UnityEditor.SessionState.EraseBool(ReachObservation);
 
         if (IsDashboardEvaluation)
         {

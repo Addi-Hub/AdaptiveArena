@@ -68,8 +68,12 @@ public sealed class SelfPlayArena : MonoBehaviour
             return;
         }
 
-        firstAgent = SelfPlayFighterAgent.Attach(first, second, round, floor.bounds, 0);
-        secondAgent = SelfPlayFighterAgent.Attach(second, first, round, floor.bounds, 1);
+        bool observeReach = false;
+#if UNITY_EDITOR
+        observeReach = ArenaTrainingPlayMode.ObserveReach;
+#endif
+        firstAgent = SelfPlayFighterAgent.Attach(first, second, round, floor.bounds, 0, observeReach: observeReach);
+        secondAgent = SelfPlayFighterAgent.Attach(second, first, round, floor.bounds, 1, observeReach: observeReach);
         firstBody = first.GetComponent<Rigidbody2D>();
         secondBody = second.GetComponent<Rigidbody2D>();
         academy.AgentPreStep += RequestDecisions;

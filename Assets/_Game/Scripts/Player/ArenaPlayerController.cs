@@ -39,6 +39,12 @@ public sealed class ArenaPlayerController : MonoBehaviour
     private void Update()
     {
         Keyboard keyboard = Keyboard.current;
+        if (keyboard?.escapeKey.wasPressedThisFrame == true)
+        {
+            SceneManager.LoadScene(ArenaMainMenu.SceneName);
+            return;
+        }
+
         if (keyboard?.rKey.wasPressedThisFrame == true)
         {
             SceneManager.LoadScene(gameObject.scene.buildIndex);

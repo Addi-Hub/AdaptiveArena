@@ -54,7 +54,7 @@ public sealed class MeleeFighter : MonoBehaviour
     public bool IsDodging => Time.time < dodgeEndsAt;
     public bool IsHealing => healRemaining > 0f;
     public bool IsDodgeReady => !roundEnded && Time.time >= dodgeReadyAt;
-    public float HeavyReach => heavy.reach;
+    public float GetAttackReach(bool isHeavy) => isHeavy ? heavy.reach : light.reach;
     public Vector2 FacingDirection { get; private set; } = Vector2.right;
 
     public void Face(Vector2 direction)

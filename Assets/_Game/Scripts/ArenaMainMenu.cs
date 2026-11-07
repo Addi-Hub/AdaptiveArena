@@ -93,11 +93,64 @@ public sealed class ArenaMainMenu : MonoBehaviour
     private void DrawTraining()
     {
         Title("TRAINING", "REINFORCEMENT LEARNING");
-        Paint(new Rect(173, 213, 554, 157), new Color(0.08f, 0.12f, 0.17f));
-        GUI.Label(new Rect(193, 231, 514, 31), "TRAINER OFFLINE", copy);
-        GUI.Label(new Rect(193, 270, 514, 31), "Active arenas  0     Episodes  —     Mean reward  —", copy);
-        GUI.Label(new Rect(193, 309, 514, 43), "Connect ML-Agents to start a training run.", copy);
+#if UNITY_EDITOR
+        if (Button(220, "Open Training Dashboard"))
+            LaunchTrainingDashboard();
+        GUI.Label(new Rect(90, 286, 720, 32), "Configure runs, resume checkpoints, and monitor stats.", copy);
+        GUI.Label(new Rect(90, 330, 720, 32), "Train in the SelfPlayArena scene from the Unity Editor.", copy);
+#else
+        GUI.Label(new Rect(90, 240, 720, 32), "Training is available in the Unity Editor.", copy);
+#endif
     }
+
+#if UNITY_EDITOR
+    [UnityEditor.MenuItem("Adaptive Arena/Training Dashboard")]
+    private static void OpenTrainingWorkspace()
+    {
+        if (!UnityEditor.EditorApplication.isPlaying)
+        {
+            if (!UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+                return;
+            UnityEditor.SceneManagement.EditorSceneManager.OpenScene("Assets/_Game/Scenes/SelfPlayArena.unity");
+        }
+        LaunchTrainingDashboard();
+    }
+
+    private static void LaunchTrainingDashboard()
+    {
+        const string interpreterKey = "AdaptiveArena.TrainingPython";
+        string root = System.IO.Path.GetDirectoryName(Application.dataPath);
+        string defaultPython = System.IO.Path.Combine(
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile),
+            "anaconda3", "envs", "adaptive-arena", "python.exe");
+        string python = UnityEditor.EditorPrefs.GetString(interpreterKey, defaultPython);
+        if (!System.IO.File.Exists(python))
+        {
+            python = UnityEditor.EditorUtility.OpenFilePanel(
+                "Select Python from your ML-Agents environment", "", "exe");
+            if (string.IsNullOrEmpty(python))
+                return;
+            UnityEditor.EditorPrefs.SetString(interpreterKey, python);
+        }
+
+        string script = System.IO.Path.Combine(root, "training", "dashboard.py");
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = python,
+                Arguments = $"\"{script}\"",
+                WorkingDirectory = root,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+        }
+        catch (System.ComponentModel.Win32Exception error)
+        {
+            UnityEditor.EditorUtility.DisplayDialog("Training Dashboard", error.Message, "OK");
+        }
+    }
+#endif
 
     private void DrawOptions()
     {

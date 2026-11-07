@@ -68,3 +68,19 @@ Copy-Item results\arena-smoke-01\ArenaDuel.onnx Assets\_Game\LocalEvaluation\Are
 ```
 
 Let Unity import the model, then open `Assets/_Game/Scenes/BaselineEvaluation.unity` and press **Play**. The evaluation uses deterministic inference and runs 100 matches at 10× simulation speed. Each pair repeats the same starting heights with left and right sides swapped. Unity prints the win rate and writes one row per match to `results/baseline-evaluations/`, including the checkpoint hash, seed, and outcome. The win rate counts every match, including draws.
+
+## Training dashboard
+
+In the Windows Unity Editor, stop Play Mode and choose **Adaptive Arena → Training Dashboard**. This opens SelfPlayArena and a separate dashboard window that stays open when Unity enters or leaves Play Mode. The Main Menu's **Training** page can also open the dashboard. If you launch it from Main Menu Play Mode, stop Play Mode and open SelfPlayArena before starting the trainer.
+
+The launcher defaults to the Python executable in the `adaptive-arena` Anaconda environment and lets you select a different interpreter if it cannot find that executable. You can also open the dashboard directly from the project root with the same environment used for training.
+
+```powershell
+$conda = "$env:USERPROFILE\anaconda3\Scripts\conda.exe"
+& $conda run --no-capture-output -n adaptive-arena python training\dashboard.py
+```
+
+- **Start new run** uses the existing damage rewards. Choose a new run ID, normal or mixed starts, seed, learning rate, checkpoint interval, and total steps. The defaults start a 500,000-step normal-start experiment.
+- **Resume selected run** loads the trainer checkpoint and its saved configuration. Set **Total target steps** to the desired cumulative step, such as 500,000 for a run saved at 50,048. The other input fields apply only to new runs. Extending a run changes the horizon of its linear schedules, so a resumed run and a fresh long run are separate experiments.
+- Wait for **Trainer listening**, then press **Play** in SelfPlayArena. To end early, stop Unity Play Mode and wait for the trainer to finish saving before starting another run. The dashboard controls one Editor-connected trainer at a time.
+- Select a run to see progress, the latest reported reward, Elo, hits per round, knockout rate, and the most recent Baseline Bot report matching its exported model. Run the BaselineEvaluation scene separately as described above and use that same seed and match count for checkpoint comparisons.

@@ -63,6 +63,7 @@ public sealed class MeleeFighter : MonoBehaviour
     public Vector2 FacingDirection { get; private set; } = Vector2.right;
     public event System.Action<bool> AttackStarted;
     public event System.Action<bool, int> HitLanded;
+    public event System.Action<bool, float, float, float, float, string, int> SwingResolved;
 
     public void Face(Vector2 direction)
     {
@@ -172,12 +173,33 @@ public sealed class MeleeFighter : MonoBehaviour
         effects.Swing();
         recoveryRemaining = activeAttack.recovery;
         Vector2 offset = opponent.body.position - body.position;
-        if (opponent.IsAlive && IsInsideAttack(offset))
+        bool inRange = offset.sqrMagnitude <= activeAttack.reach * activeAttack.reach;
+        float angle = inRange || SwingResolved != null ? Vector2.Angle(FacingDirection, offset) : 0f;
+        float halfCone = activeAttack.coneAngle * 0.5f;
+        bool inCone = angle <= halfCone;
+        bool targetAlive = opponent.IsAlive;
+        int damageDealt = 0;
+        if (targetAlive && inRange && inCone)
         {
             Vector2 pushDirection = offset.sqrMagnitude > 0.0001f ? offset.normalized : FacingDirection;
-            int damageDealt = opponent.TakeDamage(activeAttack.damage, pushDirection);
+            damageDealt = opponent.TakeDamage(activeAttack.damage, pushDirection);
             if (damageDealt > 0)
                 HitLanded?.Invoke(activeAttackIsHeavy, damageDealt);
+        }
+
+        if (SwingResolved != null)
+        {
+            string outcome = (targetAlive, inRange, inCone, damageDealt) switch
+            {
+                (false, _, _, _) => "target_defeated",
+                (_, false, false, _) => "range_and_aim",
+                (_, false, _, _) => "out_of_range",
+                (_, _, false, _) => "outside_cone",
+                (_, _, _, 0) => "dodged",
+                _ => "hit"
+            };
+            SwingResolved.Invoke(activeAttackIsHeavy, offset.magnitude, activeAttack.reach,
+                angle, halfCone, outcome, damageDealt);
         }
     }
 

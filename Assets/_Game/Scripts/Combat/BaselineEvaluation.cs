@@ -25,6 +25,7 @@ public sealed class BaselineEvaluation : MonoBehaviour
     private Rigidbody2D baselineBody;
     private System.Random random;
     private StreamWriter results;
+    private StreamWriter swings;
     private string outputPath;
     private string checkpointHash;
     private float originalTimeScale;
@@ -75,6 +76,9 @@ public sealed class BaselineEvaluation : MonoBehaviour
         results = new StreamWriter(outputPath) { AutoFlush = true };
         results.WriteLine("match,pair,seed,checkpoint_sha256,policy_side,policy_start_y,baseline_start_y,outcome,"
             + "policy_damage_dealt,baseline_damage_dealt,policy_hp_remaining,baseline_hp_remaining");
+        string swingPath = Path.Combine(directory, $"swings-{Path.GetFileName(outputPath)}");
+        swings = new StreamWriter(swingPath);
+        swings.WriteLine("match,checkpoint_sha256,policy_side,fighter,attack,distance,reach,aim_angle_deg,half_cone_deg,outcome,damage_dealt");
         policyBody = policyFighter.GetComponent<Rigidbody2D>();
         baselineBody = baselineFighter.GetComponent<Rigidbody2D>();
         random = new System.Random(seed);
@@ -83,10 +87,12 @@ public sealed class BaselineEvaluation : MonoBehaviour
         round.RoundEnded += RecordMatch;
         policyFighter.HitLanded += RecordPolicyDamage;
         baselineFighter.HitLanded += RecordBaselineDamage;
+        policyFighter.SwingResolved += RecordPolicySwing;
+        baselineFighter.SwingResolved += RecordBaselineSwing;
         originalTimeScale = Time.timeScale;
         Time.timeScale = simulationSpeed;
         PrepareMatch();
-        Debug.Log($"Evaluating {model.name} against Baseline Bot for {2 * pairs} matches. CSV: {outputPath}");
+        Debug.Log($"Evaluating {model.name} against Baseline Bot for {2 * pairs} matches. CSV: {outputPath}. Swing CSV: {swingPath}");
     }
 
     private static void ExitDashboardPlayMode()
@@ -112,6 +118,21 @@ public sealed class BaselineEvaluation : MonoBehaviour
     private void RecordPolicyDamage(bool _, int damage) => policyDamageDealt += damage;
 
     private void RecordBaselineDamage(bool _, int damage) => baselineDamageDealt += damage;
+
+    private void RecordPolicySwing(bool heavy, float distance, float reach, float angle, float halfCone,
+        string outcome, int damage) => RecordSwing("policy", heavy, distance, reach, angle, halfCone, outcome, damage);
+
+    private void RecordBaselineSwing(bool heavy, float distance, float reach, float angle, float halfCone,
+        string outcome, int damage) => RecordSwing("baseline", heavy, distance, reach, angle, halfCone, outcome, damage);
+
+    private void RecordSwing(string fighter, bool heavy, float distance, float reach, float angle, float halfCone,
+        string outcome, int damage)
+    {
+        string side = matches % 2 == 0 ? "left" : "right";
+        string attack = heavy ? "heavy" : "light";
+        swings.WriteLine(FormattableString.Invariant(
+            $"{matches + 1},{checkpointHash},{side},{fighter},{attack},{distance:F6},{reach:F6},{angle:F6},{halfCone:F6},{outcome},{damage}"));
+    }
 
     private void PrepareMatch()
     {
@@ -171,6 +192,9 @@ public sealed class BaselineEvaluation : MonoBehaviour
         round.RoundEnded -= RecordMatch;
         policyFighter.HitLanded -= RecordPolicyDamage;
         baselineFighter.HitLanded -= RecordBaselineDamage;
+        policyFighter.SwingResolved -= RecordPolicySwing;
+        baselineFighter.SwingResolved -= RecordBaselineSwing;
+        swings?.Dispose();
         Time.timeScale = originalTimeScale;
         results.Dispose();
         results = null;

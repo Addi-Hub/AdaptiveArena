@@ -20,6 +20,7 @@ public sealed class TrainingTarget : MonoBehaviour
     private void FixedUpdate()
     {
         Vector2 direction = player.position - body.position;
+        fighter.Face(direction);
         float stopDistance = fighter.HeavyReach * 0.85f;
         bool shouldApproach = !fighter.IsWindingUp && direction.sqrMagnitude > stopDistance * stopDistance;
         body.linearVelocity = fighter.GetMovementVelocity(

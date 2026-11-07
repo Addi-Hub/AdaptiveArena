@@ -36,7 +36,6 @@ public sealed class MeleeFighter : MonoBehaviour
     private Rigidbody2D body;
     private FighterEffects effects;
     private Attack activeAttack;
-    private Vector2 attackDirection;
     private float windupRemaining;
     private float recoveryRemaining;
     private float dodgeEndsAt;
@@ -56,7 +55,13 @@ public sealed class MeleeFighter : MonoBehaviour
     public bool IsHealing => healRemaining > 0f;
     public bool IsDodgeReady => !roundEnded && Time.time >= dodgeReadyAt;
     public float HeavyReach => heavy.reach;
-    public void Face(Vector2 direction) => effects.Face(direction);
+    public Vector2 FacingDirection { get; private set; } = Vector2.right;
+
+    public void Face(Vector2 direction)
+    {
+        if (direction.sqrMagnitude > 0.0001f)
+            FacingDirection = direction.normalized;
+    }
 
     private bool CanAct => !roundEnded && IsAlive && opponent.IsAlive && !IsWindingUp
         && recoveryRemaining <= 0f && !IsDodging && !IsHealing;
@@ -75,18 +80,23 @@ public sealed class MeleeFighter : MonoBehaviour
             return false;
 
         activeAttack = isHeavy ? heavy : light;
-        attackDirection = direction.normalized;
+        Face(direction);
         windupRemaining = activeAttack.windup;
-        effects.WindUp(attackDirection, activeAttack.reach, activeAttack.coneAngle,
+        effects.WindUp(activeAttack.reach, activeAttack.coneAngle,
             activeAttack.windup, isHeavy);
         return true;
     }
 
     public bool TryDodge(Vector2 direction)
     {
-        if (!CanAct || !IsDodgeReady || direction.sqrMagnitude < 0.0001f)
+        if (!IsAlive || !opponent.IsAlive || !IsDodgeReady || IsDodging
+            || direction.sqrMagnitude < 0.0001f)
             return false;
 
+        windupRemaining = 0f;
+        recoveryRemaining = 0f;
+        healRemaining = 0f;
+        effects.CancelAttack();
         dodgeDirection = direction.normalized;
         knockbackEndsAt = 0f;
         dodgeEndsAt = Time.time + dodgeDuration;
@@ -146,9 +156,9 @@ public sealed class MeleeFighter : MonoBehaviour
         recoveryRemaining = activeAttack.recovery;
         Vector2 offset = opponent.body.position - body.position;
         if (opponent.IsAlive && offset.sqrMagnitude <= activeAttack.reach * activeAttack.reach
-            && Vector2.Angle(attackDirection, offset) <= activeAttack.coneAngle * 0.5f)
+            && Vector2.Angle(FacingDirection, offset) <= activeAttack.coneAngle * 0.5f)
         {
-            Vector2 pushDirection = offset.sqrMagnitude > 0.0001f ? offset.normalized : attackDirection;
+            Vector2 pushDirection = offset.sqrMagnitude > 0.0001f ? offset.normalized : FacingDirection;
             opponent.TakeDamage(activeAttack.damage, pushDirection);
         }
     }

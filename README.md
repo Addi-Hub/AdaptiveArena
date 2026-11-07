@@ -9,6 +9,8 @@ Adaptive Arena is a planned top-down 2D Unity duel where you fight an opponent t
 3. Add the repository root to Unity Hub and open it. Allow Unity to restore the packages in [the manifest](Packages/manifest.json).
 4. Open `Assets/_Game/Scenes/Arena.unity`, enter Play Mode, and focus the Game view. Move with WASD and aim with the mouse. Use left click for a light swing, right click for a heavy swing, Space to dodge, E to heal, and R to restart. The scripted opponent closes distance and uses heavy swings. A knockout ends the round, and the round is a draw if both fighters are still standing after 60 seconds.
 
+You can steer a swing with the mouse until the hit resolves. A successful dodge cancels your current swing or heal. A canceled heal spends its charge and restores no HP.
+
 ## Repository layout
 
 | Path | Purpose |

@@ -14,8 +14,6 @@ public sealed class FighterEffects : MonoBehaviour
     private LineRenderer ring;
     private TrailRenderer dodgeTrail;
     private Transform sword;
-    private Vector2 facing = Vector2.right;
-    private float attackAngle;
     private float halfCone;
     private float reach = 1.45f;
     private float windupStart;
@@ -58,15 +56,8 @@ public sealed class FighterEffects : MonoBehaviour
         dodgeTrail.emitting = false;
     }
 
-    public void Face(Vector2 direction)
+    public void WindUp(float attackReach, float cone, float duration, bool heavy)
     {
-        if (direction.sqrMagnitude > 0.0001f)
-            facing = direction;
-    }
-
-    public void WindUp(Vector2 direction, float attackReach, float cone, float duration, bool heavy)
-    {
-        attackAngle = Angle(direction);
         halfCone = cone * 0.5f;
         reach = attackReach;
         windupStart = Time.time;
@@ -82,6 +73,12 @@ public sealed class FighterEffects : MonoBehaviour
     }
 
     public void CancelWindup() => windupDuration = 0f;
+
+    public void CancelAttack()
+    {
+        CancelWindup();
+        swingStart = -1f;
+    }
     public void Hit() => hitUntil = Time.time + 0.12f;
     public void HealComplete() => healUntil = Time.time + 0.45f;
 
@@ -102,21 +99,21 @@ public sealed class FighterEffects : MonoBehaviour
     private void AnimateSword()
     {
         sword.gameObject.SetActive(fighter.IsAlive);
-        float angle = Angle(facing);
+        float angle = Angle(fighter.FacingDirection);
         float tip = 1.15f;
         Color color = new Color(0.75f, 0.87f, 0.95f);
 
         if (windupDuration > 0f)
         {
             float progress = Mathf.Clamp01((Time.time - windupStart) / windupDuration);
-            angle = attackAngle - halfCone * Mathf.Sin(progress * Mathf.PI);
+            angle -= halfCone * Mathf.Sin(progress * Mathf.PI);
             tip = Mathf.Lerp(tip, reach, progress);
             color = Color.Lerp(color, new Color(1f, 0.62f, 0.20f), progress);
         }
         else if (swingStart >= 0f && Time.time - swingStart < swingDuration)
         {
             float progress = Mathf.Clamp01((Time.time - swingStart) / swingDuration);
-            angle = attackAngle + halfCone * Mathf.Sin(progress * Mathf.PI * 0.5f);
+            angle += halfCone * Mathf.Sin(progress * Mathf.PI * 0.5f);
             tip = Mathf.Lerp(reach, 1.15f, progress);
             color = Color.Lerp(new Color(1f, 0.91f, 0.55f), color, progress);
         }
